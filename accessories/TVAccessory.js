@@ -110,7 +110,7 @@ module.exports = class TVAccessory {
                 cb(null, health === 'normal' ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT)
             })
 
-        api.registerPlatformAccessories('homebridge-smartthings-custom', 'SmartThingsPlatform', [accessory, byName, byContent, customBtn, multiOp])
+        api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [accessory])
     }
 
     static async getStatus(token, id) {

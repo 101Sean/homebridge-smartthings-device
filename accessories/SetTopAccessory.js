@@ -73,7 +73,7 @@ module.exports = class SetTopAccessory {
         tv.addLinkedService(srcName)
         tv.addLinkedService(srcContent)
 
-        api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [acc, srcName, srcContent])
+        api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [acc])
     }
 
     static async getStatus(token, id) {
