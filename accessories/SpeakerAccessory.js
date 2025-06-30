@@ -71,7 +71,9 @@ module.exports = class SpeakerAccessory {
 
         // Helper for momentary actions
         const makeMomentary = (name, capability, args = {}) => {
-            const svc = accessory.addService(Service.Switch, name)
+            // unique subtype to avoid duplicate UUIDs
+            const subtype = name.toLowerCase().replace(/\s+/g, '-')
+            const svc = accessory.addService(Service.Switch, name, subtype)
             svc.getCharacteristic(Characteristic.On)
                 .on('set', async (on, cb) => {
                     if (on) {
@@ -126,7 +128,7 @@ module.exports = class SpeakerAccessory {
             })
 
         api.registerPlatformAccessories(
-            'homebridge-smartthings-custom',
+            'homebridge-smartthings-device',
             'SmartThingsPlatform',
             [accessory]
         )
