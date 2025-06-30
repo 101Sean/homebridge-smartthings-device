@@ -62,11 +62,21 @@ module.exports = class SpeakerAccessory {
         makeMomentary('Refresh','refresh')
         makeMomentary('Execute','execute')
 
+        // HealthCheck as StatusFault
         speaker.addOptionalCharacteristic(Characteristic.StatusFault)
         speaker.getCharacteristic(Characteristic.StatusFault)
-            .on('get',async cb=>{const h=(await SpeakerAccessory.getStatus(config.token,dev.deviceId)).components.main.healthCheck.value;cb(null,h==='normal'?0:1)})
+            .on('get', async (cb) => {
+                const data = await SpeakerAccessory.getStatus(config.token, dev.deviceId)
+                const health = data.components.main.healthCheck?.value
+                cb(
+                    null,
+                    health === 'normal'
+                        ? Characteristic.StatusFault.NO_FAULT
+                        : Characteristic.StatusFault.GENERAL_FAULT
+                )
+            })
 
-        api.registerPlatformAccessories('homebridge-smartthings-device','SmartThingsPlatform',[accessory])
+        api.registerPlatformAccessories('homebridge-smartthings-device','SmartThingsPlatform',[accessory])('homebridge-smartthings-device','SmartThingsPlatform',[accessory])
     }
 
     static async getStatus(token,id){return retry(()=>axios.get(`https://api.smartthings.com/v1/devices/${id}/status`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.data))}
