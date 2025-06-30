@@ -1,0 +1,63 @@
+{
+  "pluginAlias": "SmartThingsPlatform",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "SmartThings API 연동을 위한 OAuth 및 콜백 서버 설정을 입력하세요. 인증 후에는 Homebridge를 재시작해야 합니다.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "플랫폼 이름",
+        "type": "string",
+        "default": "SmartThings",
+        "required": true
+      },
+      "clientId": {
+        "title": "SmartThings Client ID",
+        "type": "string",
+        "required": true,
+        "description": "SmartThings Developer Workspace에서 발급받은 클라이언트 ID를 입력하세요."
+      },
+      "clientSecret": {
+        "title": "SmartThings Client Secret",
+        "type": "string",
+        "required": true,
+        "format": "password",
+        "description": "클라이언트 Secret은 보안을 위해 Homebridge UI에 마스킹됩니다."
+      },
+      "callbackIp": {
+        "title": "콜백 IP/도메인",
+        "type": "string",
+        "required": true,
+        "description": "외부 인터넷에서 접근 가능한 Homebridge 서버의 공인 IP 주소 또는 도메인입니다."
+      },
+      "callbackPort": {
+        "title": "콜백 포트",
+        "type": "integer",
+        "default": 8000,
+        "required": true,
+        "description": "Homebridge가 OAuth 콜백을 수신할 포트입니다. **공유기에서 이 포트를 반드시 포워딩**해야 합니다. (기본값: 8000)"
+      },
+
+      "accessToken": {
+        "type": "string",
+        "hidden": true,
+        "default": "",
+        "description": "인증 후 자동으로 저장되는 Access Token입니다. 수동으로 편집하지 마세요."
+      },
+      "refreshToken": {
+        "type": "string",
+        "hidden": true,
+        "default": "",
+        "description": "인증 후 자동으로 저장되는 Refresh Token입니다. 수동으로 편집하지 마세요."
+      }
+    },
+    "required": [
+      "name",
+      "clientId",
+      "clientSecret",
+      "callbackIp",
+      "callbackPort"
+    ]
+  }
+}
