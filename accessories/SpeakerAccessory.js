@@ -40,8 +40,9 @@ module.exports = class SpeakerAccessory {
 
         // Momentary buttons
         const makeMomentary = (name, cap, args) => {
-            const btn = acc.addService(Service.Switch, name)
-            btn.getCharacteristic(Characteristic.On)
+            const subtype = name.toLowerCase().replace(/\s+/g, '-')
+            const svc = acc.addService(Service.Switch, name, subtype)
+            svc.getCharacteristic(Characteristic.On)
                 .on('set', async (on, cb) => {
                     if (on) {
                         await SpeakerAccessory.sendCommand(config.token, dev.deviceId, cap, 'push', args || {})
@@ -49,7 +50,7 @@ module.exports = class SpeakerAccessory {
                     }
                     cb()
                 })
-            return btn
+            return svc
         }
 
         makeMomentary('Play/Pause', 'mediaPlayback', {})
