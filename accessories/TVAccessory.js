@@ -1,5 +1,5 @@
 const axios = require('axios')
-const { retry } = require('../utils')
+const { retry, getStatusCached } = require('../utils')
 
 module.exports = class TVAccessory {
     static register(api, dev, config) {
@@ -10,78 +10,137 @@ module.exports = class TVAccessory {
 
         const tv = accessory.addService(Service.Television, dev.label)
 
-        // Power
+        // Power On/Off
         tv.getCharacteristic(Characteristic.Active)
             .on('get', async cb => {
-                const on = (await TVAccessory.getStatus(config.token, dev.deviceId))
-                    .components.main.statelessPowerToggleButton.value === 'on'
-                cb(null, on?Characteristic.Active.ACTIVE:Characteristic.Active.INACTIVE)
+                const data = await getStatusCached(config.token, dev.deviceId)
+                const on = data.components.main.statelessPowerToggleButton?.value === 'on'
+                cb(null, on ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE)
             })
-            .on('set', async (v,cb)=>{await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessPowerToggleButton','push',{});cb()})
-
-        // RemoteKey
-        tv.getCharacteristic(Characteristic.RemoteKey)
-            .on('set', async (key,cb)=>{
-                if(key>=Characteristic.RemoteKey.NUMBER_0&&key<=Characteristic.RemoteKey.NUMBER_9){
-                    const num=key===Characteristic.RemoteKey.NUMBER_0?0:(key-1)%10+1
-                    await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessChannelButton','push',{buttonNumber:num})
-                }else if(key===Characteristic.RemoteKey.CHANNEL_UP){
-                    await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessChannelButton','push',{buttonNumber:100})
-                }else if(key===Characteristic.RemoteKey.CHANNEL_DOWN){
-                    await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessChannelButton','push',{buttonNumber:101})
-                }
+            .on('set', async (value, cb) => {
+                await retry(() =>
+                    axios.post(
+                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
+                        { commands: [{ component: 'main', capability: 'statelessPowerToggleButton', command: 'push', arguments: [] }] },
+                        { headers: { Authorization: `Bearer ${config.token}` } }
+                    )
+                )
                 cb()
             })
 
-        // VolumeSelector
+        // RemoteKey (0–9, channel up/down)
+        tv.getCharacteristic(Characteristic.RemoteKey)
+            .on('set', async (key, cb) => {
+                let cmdCap = 'statelessChannelButton', args = {}
+                if (key >= Characteristic.RemoteKey.NUMBER_0 && key <= Characteristic.RemoteKey.NUMBER_9) {
+                    args.buttonNumber = key === Characteristic.RemoteKey.NUMBER_0 ? 0 : (key - 1) % 10 + 1
+                } else if (key === Characteristic.RemoteKey.CHANNEL_UP) {
+                    args.buttonNumber = 100
+                } else if (key === Characteristic.RemoteKey.CHANNEL_DOWN) {
+                    args.buttonNumber = 101
+                } else {
+                    return cb()  // 다른 키는 무시
+                }
+                await retry(() =>
+                    axios.post(
+                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
+                        { commands: [{ component: 'main', capability: cmdCap, command: 'push', arguments: [args] }] },
+                        { headers: { Authorization: `Bearer ${config.token}` } }
+                    )
+                )
+                cb()
+            })
+
+        // Volume selector
         tv.addOptionalCharacteristic(Characteristic.VolumeSelector)
         tv.getCharacteristic(Characteristic.VolumeSelector)
-            .on('set', async (d,cb)=>{const c=d===0?'volumeUp':'volumeDown';await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessAudioVolumeButton','push',{buttonName:c});cb()})
+            .on('set', async (dir, cb) => {
+                const buttonName = dir === 0 ? 'volumeDown' : 'volumeUp'
+                await retry(() =>
+                    axios.post(
+                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
+                        { commands: [{ component: 'main', capability: 'statelessAudioVolumeButton', command: 'push', arguments: [{ buttonName }] }] },
+                        { headers: { Authorization: `Bearer ${config.token}` } }
+                    )
+                )
+                cb()
+            })
 
         // Mute
         tv.addOptionalCharacteristic(Characteristic.Mute)
         tv.getCharacteristic(Characteristic.Mute)
-            .on('set', async (m,cb)=>{await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessAudioMuteButton','push',{});cb()})
+            .on('set', async (_, cb) => {
+                await retry(() =>
+                    axios.post(
+                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
+                        { commands: [{ component: 'main', capability: 'statelessAudioMuteButton', command: 'push', arguments: [] }] },
+                        { headers: { Authorization: `Bearer ${config.token}` } }
+                    )
+                )
+                cb()
+            })
 
-        // ActiveIdentifier
+        // Channel By Name / Content
         tv.addOptionalCharacteristic(Characteristic.ActiveIdentifier)
         tv.getCharacteristic(Characteristic.ActiveIdentifier)
-            .on('set', async (id,cb)=>{if(id===11)await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessSetChannelByNameButton','push',{});else if(id===12)await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessSetChannelByContentButton','push',{});cb()})
+            .on('set', async (id, cb) => {
+                const cap = id === 11
+                    ? 'statelessSetChannelByNameButton'
+                    : 'statelessSetChannelByContentButton'
+                await retry(() =>
+                    axios.post(
+                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
+                        { commands: [{ component: 'main', capability: cap, command: 'push', arguments: [] }] },
+                        { headers: { Authorization: `Bearer ${config.token}` } }
+                    )
+                )
+                cb()
+            })
 
-        // InputSource
-        const byName=new Service.InputSource('By Name',uuid+'-11')
-        byName.setCharacteristic(Characteristic.Identifier,11)
-            .setCharacteristic(Characteristic.ConfiguredName,'Channel By Name')
-            .setCharacteristic(Characteristic.InputSourceType,Characteristic.InputSourceType.APPLICATION)
-            .setCharacteristic(Characteristic.IsConfigured,Characteristic.IsConfigured.CONFIGURED)
-            .setCharacteristic(Characteristic.CurrentVisibilityState,Characteristic.CurrentVisibilityState.SHOWN)
-        const byContent=new Service.InputSource('By Content',uuid+'-12')
-        byContent.setCharacteristic(Characteristic.Identifier,12)
-            .setCharacteristic(Characteristic.ConfiguredName,'Channel By Content')
-            .setCharacteristic(Characteristic.InputSourceType,Characteristic.InputSourceType.APPLICATION)
-            .setCharacteristic(Characteristic.IsConfigured,Characteristic.IsConfigured.CONFIGURED)
-            .setCharacteristic(Characteristic.CurrentVisibilityState,Characteristic.CurrentVisibilityState.SHOWN)
-        tv.addLinkedService(byName)
-        tv.addLinkedService(byContent)
+        // InputSource 링크 (By Name / By Content)
+        const addInput = (name, idx) => {
+            const src = new Service.InputSource(name, uuid + '-' + idx)
+            src.setCharacteristic(Characteristic.Identifier, idx)
+                .setCharacteristic(Characteristic.ConfiguredName, name)
+                .setCharacteristic(Characteristic.InputSourceType, Characteristic.InputSourceType.APPLICATION)
+                .setCharacteristic(Characteristic.CurrentVisibilityState, Characteristic.CurrentVisibilityState.SHOWN)
+            tv.addLinkedService(src)
+        }
+        addInput('Channel By Name', 11)
+        addInput('Channel By Content', 12)
 
-        // Custom Button
-        const customBtn=accessory.addService(Service.Switch,'Custom Button','custom-button')
-        customBtn.getCharacteristic(Characteristic.On)
-            .on('set',async(on,cb)=>{if(on){await TVAccessory.sendCommand(config.token,dev.deviceId,'statelessCustomButton','push',{});customBtn.updateCharacteristic(Characteristic.On,false);}cb()})
+        // Custom and Multi System Operator buttons (momentary Switch with subtype)
+        const makeSwitch = (label, capability) => {
+            const subtype = label.toLowerCase().replace(/\s+/g, '-')
+            const svc = accessory.addService(Service.Switch, label, subtype)
+            svc.getCharacteristic(Characteristic.On)
+                .on('set', async (on, cb) => {
+                    if (on) {
+                        await retry(() =>
+                            axios.post(
+                                `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
+                                { commands: [{ component: 'main', capability, command: 'push', arguments: [] }] },
+                                { headers: { Authorization: `Bearer ${config.token}` } }
+                            )
+                        )
+                        svc.updateCharacteristic(Characteristic.On, false)
+                    }
+                    cb()
+                })
+            return svc
+        }
+        makeSwitch('Custom Button', 'statelessCustomButton')
+        makeSwitch('Multi System Operator', 'custom.multiSystemOperator')
 
-        // MultiOp
-        const multiOp=accessory.addService(Service.Switch,'Multi System Operator','multi-system-operator')
-        multiOp.getCharacteristic(Characteristic.On)
-            .on('set',async(on,cb)=>{if(on){await TVAccessory.sendCommand(config.token,dev.deviceId,'custom.multiSystemOperator','push',{});multiOp.updateCharacteristic(Characteristic.On,false);}cb()})
-
-        // StatusFault
+        // StatusFault (healthCheck)
         tv.addOptionalCharacteristic(Characteristic.StatusFault)
         tv.getCharacteristic(Characteristic.StatusFault)
-            .on('get',async(cb)=>{const h=(await TVAccessory.getStatus(config.token,dev.deviceId)).components.main.healthCheck.value;cb(null,h==='normal'?0:1)})
+            .on('get', async cb => {
+                const data = await getStatusCached(config.token, dev.deviceId)
+                const health = data.components.main.healthCheck?.value || 'normal'
+                cb(null, health === 'normal' ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT)
+            })
 
-        api.registerPlatformAccessories('homebridge-smartthings-device','SmartThingsPlatform',[accessory])
+        api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [accessory])
     }
-
-    static async getStatus(token,id){return retry(()=>axios.get(`https://api.smartthings.com/v1/devices/${id}/status`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.data))}
-    static async sendCommand(token,id,cap,cmd,args){return retry(()=>axios.post(`https://api.smartthings.com/v1/devices/${id}/commands`,{commands:[{component:'main',capability:cap,command:cmd,arguments:[args]}]},{headers:{Authorization:`Bearer ${token}`}}))}
 }
