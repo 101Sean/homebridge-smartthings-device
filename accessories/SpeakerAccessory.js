@@ -4,72 +4,141 @@ module.exports = class SpeakerAccessory {
     static register(api, dev, config) {
         const { Service, Characteristic, Categories } = api.hap
         const uuid = api.hap.uuid.generate(dev.deviceId)
-        const acc  = new api.platformAccessory(dev.label, uuid)
-        acc.category = Categories.SPEAKER
+        const accessory = new api.platformAccessory(dev.label, uuid)
+        accessory.category = Categories.SPEAKER
 
-        const spk = acc.addService(Service.Speaker, dev.label)
+        // Speaker service for volume and mute
+        const speaker = accessory.addService(Service.Speaker, dev.label)
 
         // Volume
-        spk.getCharacteristic(Characteristic.Volume)
-            .on('get', async cb => {
+        speaker.getCharacteristic(Characteristic.Volume)
+            .on('get', async (cb) => {
                 const v = (await SpeakerAccessory.getStatus(config.token, dev.deviceId))
                     .components.main.audioVolume.volume.value
                 cb(null, v)
             })
-            .on('set', async (v, cb) => {
-                await SpeakerAccessory.sendCommand(config.token, dev.deviceId, 'audioVolume', 'setVolume', { volume: v })
+            .on('set', async (value, cb) => {
+                await SpeakerAccessory.sendCommand(
+                    config.token,
+                    dev.deviceId,
+                    'audioVolume',
+                    'setVolume',
+                    { volume: value }
+                )
                 cb()
             })
 
         // Mute
-        spk.addOptionalCharacteristic(Characteristic.Mute)
-        spk.getCharacteristic(Characteristic.Mute)
-            .on('set', async (m, cb) => {
-                await SpeakerAccessory.sendCommand(config.token, dev.deviceId, 'audioMute', 'push', { buttonName: m ? 'mute' : 'unmute' })
+        speaker.addOptionalCharacteristic(Characteristic.Mute)
+        speaker.getCharacteristic(Characteristic.Mute)
+            .on('get', async (cb) => {
+                const m = (await SpeakerAccessory.getStatus(config.token, dev.deviceId))
+                    .components.main.audioMute.mute.value
+                cb(null, m === 'muted')
+            })
+            .on('set', async (value, cb) => {
+                await SpeakerAccessory.sendCommand(
+                    config.token,
+                    dev.deviceId,
+                    'audioMute',
+                    'push',
+                    { buttonName: value ? 'mute' : 'unmute' }
+                )
                 cb()
             })
 
-        // Input Source
+        // Media Input Source
+        speaker.addOptionalCharacteristic(Characteristic.ActiveIdentifier)
+        speaker.addOptionalCharacteristic(Characteristic.ConfiguredName)
         const input = new Service.InputSource('Media Input', uuid + '-20')
         input.setCharacteristic(Characteristic.Identifier, 20)
             .setCharacteristic(Characteristic.ConfiguredName, 'Media Input')
             .setCharacteristic(Characteristic.InputSourceType, Characteristic.InputSourceType.HDMI)
             .setCharacteristic(Characteristic.IsConfigured, Characteristic.IsConfigured.CONFIGURED)
             .setCharacteristic(Characteristic.CurrentVisibilityState, Characteristic.CurrentVisibilityState.SHOWN)
-        spk.addLinkedService(input)
+        speaker.addLinkedService(input)
+        input.getCharacteristic(Characteristic.InputSourceType)
+            .on('set', async (value, cb) => {
+                await SpeakerAccessory.sendCommand(
+                    config.token,
+                    dev.deviceId,
+                    'mediaInputSource',
+                    'setInputSource',
+                    { source: value }
+                )
+                cb()
+            })
 
-        // Momentary buttons
-        const makeMomentary = (name, cap, args) => {
-            const subtype = name.toLowerCase().replace(/\s+/g, '-')
-            const svc = acc.addService(Service.Switch, name, subtype)
+        // Helper for momentary actions
+        const makeMomentary = (name, capability, args = {}) => {
+            const svc = accessory.addService(Service.Switch, name)
             svc.getCharacteristic(Characteristic.On)
                 .on('set', async (on, cb) => {
                     if (on) {
-                        await SpeakerAccessory.sendCommand(config.token, dev.deviceId, cap, 'push', args || {})
-                        btn.updateCharacteristic(Characteristic.On, false)
+                        await SpeakerAccessory.sendCommand(
+                            config.token,
+                            dev.deviceId,
+                            capability,
+                            'push',
+                            args
+                        )
+                        svc.updateCharacteristic(Characteristic.On, false)
                     }
                     cb()
                 })
             return svc
         }
 
-        makeMomentary('Play/Pause', 'mediaPlayback', {})
+        // Playback controls
+        makeMomentary('Play/Pause', 'mediaPlayback')
         makeMomentary('Next Track', 'mediaTrackControl', { buttonName: 'next' })
         makeMomentary('Previous Track', 'mediaTrackControl', { buttonName: 'previous' })
-        makeMomentary('Shuffle', 'mediaPlaybackShuffle', {})
-        makeMomentary('Repeat', 'mediaPlaybackRepeat', {})
-        makeMomentary('Refresh', 'refresh', {})
-        makeMomentary('Execute', 'execute', {})
+        makeMomentary('Shuffle', 'mediaPlaybackShuffle')
+        makeMomentary('Repeat', 'mediaPlaybackRepeat')
+
+        // Notification and TTS
+        makeMomentary('Audio Notification', 'audioNotification')
         makeMomentary('TTS', 'speechSynthesis', { text: 'Hello from Homebridge' })
 
-        api.registerPlatformAccessories('homebridge-smartthings-deivce', 'SmartThingsPlatform', [acc, input])
+        // Samsung-specific functions
+        makeMomentary('Bixby Content', 'samsungim.bixbyContent')
+        makeMomentary('Announcement', 'samsungim.announcement')
+        makeMomentary('Network Audio Mode', 'samsungim.networkAudioMode')
+        makeMomentary('Network Group Info', 'samsungim.networkAudioGroupInfo')
+        makeMomentary('Network Track Data', 'samsungim.networkAudioTrackData')
+
+        // Refresh and execute
+        makeMomentary('Refresh', 'refresh')
+        makeMomentary('Execute', 'execute')
+
+        // HealthCheck as StatusFault
+        speaker.addOptionalCharacteristic(Characteristic.StatusFault)
+        speaker.getCharacteristic(Characteristic.StatusFault)
+            .on('get', async (cb) => {
+                const health = (await SpeakerAccessory.getStatus(config.token, dev.deviceId))
+                    .components.main.healthCheck.value
+                cb(
+                    null,
+                    health === 'normal'
+                        ? Characteristic.StatusFault.NO_FAULT
+                        : Characteristic.StatusFault.GENERAL_FAULT
+                )
+            })
+
+        api.registerPlatformAccessories(
+            'homebridge-smartthings-custom',
+            'SmartThingsPlatform',
+            [accessory]
+        )
     }
 
     static async getStatus(token, id) {
-        return (await axios.get(
-            `https://api.smartthings.com/v1/devices/${id}/status`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        )).data
+        return (
+            await axios.get(
+                `https://api.smartthings.com/v1/devices/${id}/status`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            )
+        ).data
     }
 
     static async sendCommand(token, id, capability, command, args) {
