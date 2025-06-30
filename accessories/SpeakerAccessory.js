@@ -76,7 +76,7 @@ module.exports = class SpeakerAccessory {
                 )
             })
 
-        api.registerPlatformAccessories('homebridge-smartthings-device','SmartThingsPlatform',[accessory])('homebridge-smartthings-device','SmartThingsPlatform',[accessory])
+        api.registerPlatformAccessories('homebridge-smartthings-device','SmartThingsPlatform',[accessory])
     }
 
     static async getStatus(token,id){return retry(()=>axios.get(`https://api.smartthings.com/v1/devices/${id}/status`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.data))}
