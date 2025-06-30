@@ -61,7 +61,7 @@ module.exports = class SpeakerAccessory {
         makeMomentary('Execute', 'execute', {})
         makeMomentary('TTS', 'speechSynthesis', { text: 'Hello from Homebridge' })
 
-        api.registerPlatformAccessories('homebridge-smartthings-custom', 'SmartThingsPlatform', [acc, input])
+        api.registerPlatformAccessories('homebridge-smartthings-deivce', 'SmartThingsPlatform', [acc, input])
     }
 
     static async getStatus(token, id) {
