@@ -1,6 +1,6 @@
 {
   "name": "homebridge-smartthings-device",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Homebridge plugin for SmartThings devices (AirCon, TV, SetTop, Speaker)",
   "main": "index.js",
   "keywords": [

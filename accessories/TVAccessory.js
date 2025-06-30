@@ -80,8 +80,8 @@ module.exports = class TVAccessory {
         tv.addLinkedService(byName)
         tv.addLinkedService(byContent)
 
-        // Custom Button
-        const customBtn = accessory.addService(Service.Switch, 'Custom Button')
+        // Custom Button with unique subtype
+        const customBtn = accessory.addService(Service.Switch, 'Custom Button', 'custom-button')
         customBtn.getCharacteristic(Characteristic.On)
             .on('set', async (on, cb) => {
                 if (on) {
@@ -91,8 +91,8 @@ module.exports = class TVAccessory {
                 cb()
             })
 
-        // Multi System Operator
-        const multiOp = accessory.addService(Service.Switch, 'Multi System Operator')
+        // Multi System Operator with unique subtype
+        const multiOp = accessory.addService(Service.Switch, 'Multi System Operator', 'multi-system-operator')
         multiOp.getCharacteristic(Characteristic.On)
             .on('set', async (on, cb) => {
                 if (on) {
@@ -110,7 +110,7 @@ module.exports = class TVAccessory {
                 cb(null, health === 'normal' ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT)
             })
 
-        api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [accessory, byName, byContent, customBtn, multiOp])
+        api.registerPlatformAccessories('homebridge-smartthings-custom', 'SmartThingsPlatform', [accessory, byName, byContent, customBtn, multiOp])
     }
 
     static async getStatus(token, id) {
