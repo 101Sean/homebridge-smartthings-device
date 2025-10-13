@@ -33,6 +33,8 @@ class OAuthServer {
     }
 
     handleRequest(req, res) {
+        this.log.warn('===[DEBUG] 요청이 들어온 URL:', req.url); //로그 테스트
+
         if (req.url.startsWith('/OAuthServer/callback')) {
             this.handleOAuthCallback(req, res);
         } else {
