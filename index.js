@@ -37,7 +37,7 @@ class SmartThingsPlatform {
     persistTokens() {
         this.config.accessToken = this.accessToken;
         this.config.refreshToken = this.refreshToken;
-        this.api.updatePlatformConfig(this.config);
+        //this.api.updatePlatformConfig(this.config);
         this.log.info('인증 토큰 저장 완료.');
     }
 
