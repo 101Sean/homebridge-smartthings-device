@@ -11,11 +11,14 @@ class BaseAccessory {
         this.Service = platform.api.hap.Service;
         this.Characteristic = platform.api.hap.Characteristic;
 
-        // SmartThings API는 실시간 상태를 제공하지 않을 수 있어 초기 상태 설정
-        this.currentState = device.components.main.state || {
+        // device.components.main 객체가 존재하는지 먼저 확인
+        const mainComponent = device.components.find(c => c.id === 'main');
+        const currentStateFromDevice = mainComponent && mainComponent.state ? mainComponent.state : {};
+
+        this.currentState = {
             switch: { value: 'off' },
             mute: { value: 'unmuted' },
-            volume: { value: '50' }
+            volume: { value: '50' },
         };
 
         // Accessory Information Service 설정

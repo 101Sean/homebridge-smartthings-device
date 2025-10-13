@@ -81,6 +81,11 @@ class SmartThingsPlatform {
                     continue;
                 }
 
+                if (!device.components || !device.components.find(c => c.id === 'main')) {
+                    this.log.warn(`Skipping device ${device.label} due to missing 'main' component.`);
+                    continue;
+                }
+
                 if (!accessory) {
                     accessory = new this.api.platformAccessory(deviceLabel, uuid);
                     this.api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [accessory]);
