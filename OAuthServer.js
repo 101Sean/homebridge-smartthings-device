@@ -26,7 +26,7 @@ class OAuthServer {
             const authUrl = this.getAuthUrl(callbackPort);
             this.log.warn('====================================================');
             this.log.warn('!!! SmartThings OAuth 인증이 필요합니다 !!!');
-            this.log.warn(`1. Redirect URI: ${this.config.callbackIp}:${callbackPort}/oauth/callback`);
+            this.log.warn(`1. Redirect URI: ${this.config.callbackIp}/oauth/callback`);
             this.log.warn(`2. 브라우저에 접속: ${authUrl}`);
             this.log.warn('====================================================');
         });
@@ -85,7 +85,7 @@ class OAuthServer {
     }
 
     async exchangeCodeForToken(code) {
-        const redirectUri = `${this.config.callbackIp}:${this.config.callbackPort || 8000}/oauth/callback`;
+        const redirectUri = `${this.config.callbackIp}/oauth/callback`;
         const tokenUrl = 'https://api.smartthings.com/oauth/token';
 
         const response = await fetch(tokenUrl, {
