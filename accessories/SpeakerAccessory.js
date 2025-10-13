@@ -1,113 +1,48 @@
-const axios = require('axios')
-const { retry, getStatusCached } = require('../utils')
+const BaseAccessory = require('./BaseAccessory');
+const { Service, Characteristic } = require('homebridge');
 
-module.exports = class SpeakerAccessory {
-    static register(api, dev, config) {
-        const { Service, Characteristic, Categories } = api.hap
-        const uuid = api.hap.uuid.generate(dev.deviceId)
-        const accessory = new api.platformAccessory(dev.label, uuid)
-        accessory.category = Categories.SPEAKER
+class SpeakerAccessory extends BaseAccessory {
+    constructor(platform, accessory, device) {
+        super(platform, accessory, device);
 
-        const speaker = accessory.addService(Service.Speaker, dev.label)
+        this.speakerService = this.accessory.getService(Service.Speaker) ||
+            this.accessory.addService(Service.Speaker, device.label, 'speakerService');
 
-        // Volume
-        speaker.getCharacteristic(Characteristic.Volume)
-            .on('get', async cb => {
-                const data = await getStatusCached(config.token, dev.deviceId)
-                cb(null, data.components.main.audioVolume.volume.value)
+        // 음소거 (Characteristic.Mute)
+        this.speakerService.getCharacteristic(Characteristic.Mute)
+            .on('get', (callback) => {
+                // SmartThings는 muted/unmuted 값을 사용합니다.
+                const isMuted = this.currentState.mute && this.currentState.mute.value === 'muted';
+                callback(null, isMuted);
             })
-            .on('set', async (value, cb) => {
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands:[{component:'main',capability:'audioVolume',command:'setVolume',arguments:[{volume:value}]}] },
-                        { headers:{Authorization:`Bearer ${config.token}`}}
-                    )
-                )
-                cb()
-            })
+            .on('set', async (value, callback) => {
+                const command = value ? 'mute' : 'unmute';
+                await this.sendSmartThingsCommand('audioMute', command);
+                callback(null);
+            });
 
-        // Mute
-        speaker.addOptionalCharacteristic(Characteristic.Mute)
-        speaker.getCharacteristic(Characteristic.Mute)
-            .on('get', async cb => {
-                const data = await getStatusCached(config.token, dev.deviceId)
-                cb(null, data.components.main.audioMute.mute.value==='muted')
+        // 볼륨 (Characteristic.Volume)
+        this.speakerService.getCharacteristic(Characteristic.Volume)
+            .on('get', (callback) => {
+                const volume = this.currentState.volume && parseInt(this.currentState.volume.value, 10);
+                callback(null, volume || 0);
             })
-            .on('set', async (value, cb) => {
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands:[{component:'main',capability:'audioMute',command:'push',arguments:[{buttonName:value?'mute':'unmute'}]}] },
-                        { headers:{Authorization:`Bearer ${config.token}`}}
-                    )
-                )
-                cb()
-            })
+            .on('set', async (value, callback) => {
+                // setVolume 명령은 인수로 볼륨 값을 받습니다.
+                await this.sendSmartThingsCommand('audioVolume', 'setVolume', [value]);
+                callback(null);
+            });
 
-        // Media Input Source
-        speaker.addOptionalCharacteristic(Characteristic.ActiveIdentifier)
-        speaker.addOptionalCharacteristic(Characteristic.ConfiguredName)
-        const input = new Service.InputSource('Media Input', uuid+'-20')
-        input.setCharacteristic(Characteristic.Identifier,20)
-            .setCharacteristic(Characteristic.ConfiguredName,'Media Input')
-            .setCharacteristic(Characteristic.InputSourceType,Characteristic.InputSourceType.HDMI)
-            .setCharacteristic(Characteristic.CurrentVisibilityState,Characteristic.CurrentVisibilityState.SHOWN)
-        speaker.addLinkedService(input)
-        input.getCharacteristic(Characteristic.InputSourceType)
-            .on('set', async (val, cb) => {
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands:[{component:'main',capability:'mediaInputSource',command:'setInputSource',arguments:[{source:val}]}] },
-                        { headers:{Authorization:`Bearer ${config.token}`}}
-                    )
-                )
-                cb()
-            })
+        // Home Mini는 'switch' Capability가 없으므로 전원 상태는 생략합니다.
+    }
 
-        // Momentary actions
-        const makeMomentary=(label,cap,args={})=>{
-            const subtype=label.toLowerCase().replace(/\s+/g,'-')
-            const svc=accessory.addService(Service.Switch,label,subtype)
-            svc.getCharacteristic(Characteristic.On)
-                .on('set',async(on,cb)=>{
-                    if(on){
-                        await retry(()=>axios.post(
-                            `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                            { commands:[{component:'main',capability:cap,command:'push',arguments:[args]}] },
-                            { headers:{Authorization:`Bearer ${config.token}`}}
-                        ))
-                        svc.updateCharacteristic(Characteristic.On,false)
-                    }
-                    cb()
-                })
-            return svc
-        }
-        makeMomentary('Play/Pause','mediaPlayback')
-        makeMomentary('Next Track','mediaTrackControl',{buttonName:'next'})
-        makeMomentary('Previous Track','mediaTrackControl',{buttonName:'previous'})
-        makeMomentary('Shuffle','mediaPlaybackShuffle')
-        makeMomentary('Repeat','mediaPlaybackRepeat')
-        makeMomentary('Audio Notification','audioNotification')
-        makeMomentary('TTS','speechSynthesis',{text:'Hello from Homebridge'})
-        makeMomentary('Bixby Content','samsungim.bixbyContent')
-        makeMomentary('Announcement','samsungim.announcement')
-        makeMomentary('Network Audio Mode','samsungim.networkAudioMode')
-        makeMomentary('Network Group Info','samsungim.networkAudioGroupInfo')
-        makeMomentary('Network Track Data','samsungim.networkAudioTrackData')
-        makeMomentary('Refresh','refresh')
-        makeMomentary('Execute','execute')
+    updateHomeKitCharacteristics() {
+        const isMuted = this.currentState.mute && this.currentState.mute.value === 'muted';
+        const volume = this.currentState.volume && parseInt(this.currentState.volume.value, 10);
 
-        // HealthCheck
-        speaker.addOptionalCharacteristic(Characteristic.StatusFault)
-        speaker.getCharacteristic(Characteristic.StatusFault)
-            .on('get', async cb => {
-                const data = await getStatusCached(config.token, dev.deviceId)
-                const health = data.components.main.healthCheck?.value || 'normal'
-                cb(null, health==='normal'?Characteristic.StatusFault.NO_FAULT:Characteristic.StatusFault.GENERAL_FAULT)
-            })
-
-        api.registerPlatformAccessories('homebridge-smartthings-device','SmartThingsPlatform',[accessory])
+        this.speakerService.updateCharacteristic(Characteristic.Mute, isMuted);
+        this.speakerService.updateCharacteristic(Characteristic.Volume, volume || 0);
     }
 }
+
+module.exports = SpeakerAccessory;

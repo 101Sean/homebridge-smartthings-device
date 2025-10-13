@@ -6,8 +6,15 @@ const TVAccessory      = require('./accessories/TVAccessory');
 const SetTopAccessory  = require('./accessories/SetTopAccessory');
 const SpeakerAccessory = require('./accessories/SpeakerAccessory');
 
+const ACCESSORY_CLASSES = [
+    TVAccessory,
+    SetTopAccessory,
+    AirConAccessory,
+    SpeakerAccessory
+];
+
 module.exports = (api) => {
-    api.registerPlatform('SmartThingsPlatform', SmartThingsPlatform);
+    api.registerPlatform('homebridge-smartthings-device', 'SmartThingsPlatform', SmartThingsPlatform);
 };
 
 class SmartThingsPlatform {
@@ -20,6 +27,7 @@ class SmartThingsPlatform {
         this.refreshToken = this.config.refreshToken;
 
         this.oauthServer = new OAuthServer(this);
+        this.log.info(`SmartThings Platform Initialized. Token status: ${this.accessToken ? 'Loaded' : 'Missing'}`);
 
         api.on('didFinishLaunching', () => this.initAuthentication());
     }
@@ -34,10 +42,13 @@ class SmartThingsPlatform {
         }
     }
 
+    configureAccessory(accessory) {
+        this.log.info(`Loading accessory from cache: ${accessory.displayName}`);
+    }
+
     persistTokens() {
         this.config.accessToken = this.accessToken;
         this.config.refreshToken = this.refreshToken;
-        //this.api.updatePlatformConfig(this.config);
         this.log.info('인증 토큰 저장 완료.');
     }
 
@@ -87,49 +98,47 @@ class SmartThingsPlatform {
     }
 
     async discoverDevices() {
-        if (!this.accessToken) {
-            this.log.error('Access Token이 없어 기기를 로드할 수 없습니다. 인증을 완료해주세요.');
-            return;
-        }
-
-        const fetchDevicesAndRegister = async () => {
-            const resp = await axios.get(
-                'https://api.smartthings.com/v1/devices',
-                { headers: { Authorization: `Bearer ${this.accessToken}` } }
-            );
-
-            for (const dev of resp.data.items) {
-                const caps = dev.components[0].capabilities.map(c => c.id);
-                const cats = dev.components[0].categories?.map(c => c.name) || [];
-
-                if (caps.includes('airConditionerMode'))
-                    AirConAccessory.register(this.api, dev, this.config);
-                else if (cats.includes('Television'))
-                    TVAccessory.register(this.api, dev, this.config);
-                else if (cats.includes('SetTop'))
-                    SetTopAccessory.register(this.api, dev, this.config);
-                else if (caps.includes('audioVolume'))
-                    SpeakerAccessory.register(this.api, dev, this.config);
-            }
-        };
+        this.log.info('SmartThings API를 통해 기기 목록을 가져옵니다...');
+        const url = 'https://api.smartthings.com/v1/devices';
 
         try {
-            this.log.info('SmartThings API를 통해 기기 목록을 가져옵니다...');
-            await fetchDevicesAndRegister();
-        } catch (error) {
-            if (error.response && error.response.status === 401 && this.refreshToken) {
-                try {
-                    await this.refreshAccessToken();
+            const response = await axios.get(url, {
+                headers: { 'Authorization': `Bearer ${this.accessToken}` }
+            });
+            const devices = response.data.items;
 
-                    this.log.info('토큰 갱신 성공, 기기 로드를 재시도합니다.');
-                    return this.discoverDevices();
+            const newAccessories = [];
 
-                } catch (refreshError) {
-                    this.log.error('토큰 갱신에 실패하여 기기 로드를 중단합니다. 재인증이 필요합니다.');
+            for (const device of devices) {
+                let accessoryInstance = null;
+
+                for (const AccessoryClass of ACCESSORY_CLASSES) {
+                    const uuid = this.api.hap.uuid.generate(device.deviceId);
+                    let accessory = this.api.platformAccessory.get(uuid);
+
+                    if (!accessory) {
+                        accessory = new this.api.platformAccessory(device.label, uuid);
+                        this.api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [accessory]);
+                        this.log.info(`새 액세서리 등록: ${device.label}`);
+                    }
+
+                    if (device.label.includes('TV')) {
+                        accessoryInstance = new TVAccessory(this, accessory, device);
+                        break;
+                    } else if (device.label.includes('Air Conditioner')) {
+                        accessoryInstance = new AirConAccessory(this, accessory, device);
+                        break;
+                    } else if (device.label.includes('Set-Top')) {
+                        accessoryInstance = new SetTopAccessory(this, accessory, device);
+                        break;
+                    } else if (device.label.includes('Home mini')) {
+                        accessoryInstance = new SpeakerAccessory(this, accessory, device);
+                        break;
+                    }
                 }
-            } else {
-                this.log.error('기기 로드 중 오류 발생 (API 통신 오류):', error.message);
             }
+        } catch (error) {
+            this.log.error('기기 목록 로드 실패:', error.message);
         }
     }
 }

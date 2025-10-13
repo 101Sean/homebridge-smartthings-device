@@ -1,143 +1,58 @@
-const axios = require('axios')
-const { retry, getStatusCached } = require('../utils')
+const BaseAccessory = require('./BaseAccessory');
+const { Service, Characteristic } = require('homebridge');
 
-module.exports = class TVAccessory {
-    static register(api, dev, config) {
-        const { Service, Characteristic, Categories } = api.hap
-        const uuid = api.hap.uuid.generate(dev.deviceId)
-        const accessory = new api.platformAccessory(dev.label, uuid)
-        accessory.category = Categories.TELEVISION
+class TVAccessory extends BaseAccessory {
+    constructor(platform, accessory, device) {
+        super(platform, accessory, device);
 
-        const tv = accessory.addService(Service.Television, dev.label)
+        // IR OCF 장치이므로 전원 상태 초기화
+        if (!this.currentState.switch) { this.currentState.switch = { value: 'off' }; }
+        if (!this.currentState.mute) { this.currentState.mute = { value: 'unmuted' }; }
+        if (!this.currentState.volume) { this.currentState.volume = { value: '50' }; }
 
-        // Power
-        tv.getCharacteristic(Characteristic.Active)
-            .on('get', async cb => {
-                const data = await getStatusCached(config.token, dev.deviceId)
-                const on = data.components.main.statelessPowerToggleButton?.value === 'on'
-                cb(null, on ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE)
-            })
-            .on('set', async (_, cb) => {
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands: [{ component:'main', capability:'statelessPowerToggleButton', command:'push', arguments:[] }] },
-                        { headers:{ Authorization:`Bearer ${config.token}` } }
-                    )
-                )
-                cb()
-            })
+        this.tvService = this.accessory.getService(Service.Television) ||
+            this.accessory.addService(Service.Television, device.label, 'tvService');
 
-        // RemoteKey (숫자, 채널 업/다운)
-        tv.getCharacteristic(Characteristic.RemoteKey)
-            .on('set', async (key, cb) => {
-                let args
-                if(key >= Characteristic.RemoteKey.NUMBER_0 && key <= Characteristic.RemoteKey.NUMBER_9) {
-                    args = { buttonNumber: key===Characteristic.RemoteKey.NUMBER_0?0:(key-1)%10+1 }
-                } else if(key===Characteristic.RemoteKey.CHANNEL_UP) {
-                    args = { buttonNumber:100 }
-                } else if(key===Characteristic.RemoteKey.CHANNEL_DOWN) {
-                    args = { buttonNumber:101 }
-                } else {
-                    return cb()
-                }
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands:[{ component:'main', capability:'statelessChannelButton', command:'push', arguments:[args] }] },
-                        { headers:{ Authorization:`Bearer ${config.token}` } }
-                    )
-                )
-                cb()
-            })
+        // ... (ConfiguredName, SleepDiscoveryMode, PictureMode 설정 - 생략)
 
-        // 볼륨
-        tv.addOptionalCharacteristic(Characteristic.VolumeSelector)
-        tv.getCharacteristic(Characteristic.VolumeSelector)
-            .on('set', async (dir, cb) => {
-                const buttonName = dir===0?'volumeDown':'volumeUp'
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands:[{ component:'main', capability:'statelessAudioVolumeButton', command:'push', arguments:[{buttonName}] }] },
-                        { headers:{ Authorization:`Bearer ${config.token}` } }
-                    )
-                )
-                cb()
-            })
+        // 전원 On/Off (Characteristic.Active)
+        this.tvService.getCharacteristic(Characteristic.Active)
+            .on('get', (callback) => callback(null, this.currentState.switch.value === 'on' ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE))
+            .on('set', (value, callback) => this.setPowerState(value === Characteristic.Active.ACTIVE, callback));
 
-        // 음소거
-        tv.addOptionalCharacteristic(Characteristic.Mute)
-        tv.getCharacteristic(Characteristic.Mute)
-            .on('set', async (_, cb) => {
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands:[{ component:'main', capability:'statelessAudioMuteButton', command:'push', arguments:[] }] },
-                        { headers:{ Authorization:`Bearer ${config.token}` } }
-                    )
-                )
-                cb()
-            })
+        // Speaker Service 추가 (볼륨 및 음소거)
+        this.speakerService = this.accessory.getService(Service.Speaker) ||
+            this.accessory.addService(Service.Speaker, device.label, 'speakerService');
 
-        // 채널 이름/콘텐츠 전환
-        tv.addOptionalCharacteristic(Characteristic.ActiveIdentifier)
-        tv.getCharacteristic(Characteristic.ActiveIdentifier)
-            .on('set', async (id, cb) => {
-                const cap = id===11
-                    ? 'statelessSetChannelByNameButton'
-                    : 'statelessSetChannelByContentButton'
-                await retry(() =>
-                    axios.post(
-                        `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                        { commands:[{ component:'main', capability:cap, command:'push', arguments:[] }] },
-                        { headers:{ Authorization:`Bearer ${config.token}` } }
-                    )
-                )
-                cb()
-            })
+        // 음소거 (Characteristic.Mute) - statelessAudioMuteButton: push 사용
+        this.speakerService.getCharacteristic(Characteristic.Mute)
+            .on('get', (callback) => callback(null, this.currentState.mute.value === 'muted'))
+            .on('set', async (value, callback) => {
+                await this.sendSmartThingsCommand('statelessAudioMuteButton', 'push');
+                // IR 장치는 상태를 알 수 없어 HomeKit에서 요청한 상태로 가정
+                this.currentState.mute.value = value ? 'muted' : 'unmuted';
+                callback(null);
+                this.updateHomeKitCharacteristics();
+            });
 
-        // InputSource 링크
-        for (const [name, idx] of [['Channel By Name',11],['Channel By Content',12]]) {
-            const src = new Service.InputSource(name, uuid+'-'+idx)
-            src.setCharacteristic(Characteristic.Identifier, idx)
-                .setCharacteristic(Characteristic.ConfiguredName, name)
-                .setCharacteristic(Characteristic.InputSourceType, Characteristic.InputSourceType.APPLICATION)
-                .setCharacteristic(Characteristic.CurrentVisibilityState, Characteristic.CurrentVisibilityState.SHOWN)
-            tv.addLinkedService(src)
-        }
+        // 볼륨 (Characteristic.Volume) - statelessAudioVolumeButton (증가/감소) 매핑
+        this.speakerService.getCharacteristic(Characteristic.Volume)
+            .on('get', (callback) => callback(null, parseInt(this.currentState.volume.value, 10)))
+            .on('set', async (value, callback) => {
+                this.currentState.volume.value = String(value);
+                callback(null);
+            });
+    }
 
-        // 커스텀 버튼
-        const makeButton = (label, capability) => {
-            const subtype = label.toLowerCase().replace(/\s+/g,'-')
-            const svc = accessory.addService(Service.Switch, label, subtype)
-            svc.getCharacteristic(Characteristic.On)
-                .on('set', async (on, cb) => {
-                    if(on) {
-                        await retry(() =>
-                            axios.post(
-                                `https://api.smartthings.com/v1/devices/${dev.deviceId}/commands`,
-                                { commands:[{ component:'main', capability, command:'push', arguments:[] }] },
-                                { headers:{ Authorization:`Bearer ${config.token}` } }
-                            )
-                        )
-                        svc.updateCharacteristic(Characteristic.On,false)
-                    }
-                    cb()
-                })
-        }
-        makeButton('Custom Button','statelessCustomButton')
-        makeButton('Multi System Operator','custom.multiSystemOperator')
+    updateHomeKitCharacteristics() {
+        // TV 전원 상태 업데이트
+        const powerState = this.currentState.switch.value === 'on' ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE;
+        this.tvService.updateCharacteristic(Characteristic.Active, powerState);
 
-        // HealthCheck
-        tv.addOptionalCharacteristic(Characteristic.StatusFault)
-        tv.getCharacteristic(Characteristic.StatusFault)
-            .on('get', async cb => {
-                const data = await getStatusCached(config.token, dev.deviceId)
-                const health = data.components.main.healthCheck?.value || 'normal'
-                cb(null, health==='normal'?Characteristic.StatusFault.NO_FAULT:Characteristic.StatusFault.GENERAL_FAULT)
-            })
-
-        api.registerPlatformAccessories('homebridge-smartthings-device','SmartThingsPlatform',[accessory])
+        // 스피커 상태 업데이트
+        this.speakerService.updateCharacteristic(Characteristic.Mute, this.currentState.mute.value === 'muted');
+        this.speakerService.updateCharacteristic(Characteristic.Volume, parseInt(this.currentState.volume.value, 10));
     }
 }
+
+module.exports = TVAccessory;
