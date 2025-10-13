@@ -26,8 +26,6 @@ class BaseAccessory {
             .setCharacteristic(this.Characteristic.Manufacturer, 'SmartThings')
             .setCharacteristic(this.Characteristic.Model, device.presentationId)
             .setCharacteristic(this.Characteristic.SerialNumber, device.deviceId);
-
-        this.updateHomeKitCharacteristics();
     }
 
     async sendSmartThingsCommand(capability, command, args = []) {
