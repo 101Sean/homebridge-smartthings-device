@@ -1,9 +1,10 @@
 const BaseAccessory = require('./BaseAccessory');
-const { Service, Characteristic } = require('homebridge');
 
 class SpeakerAccessory extends BaseAccessory {
     constructor(platform, accessory, device) {
         super(platform, accessory, device);
+
+        const { Service, Characteristic } = this.platform.api.hap;
 
         this.speakerService = this.accessory.getService(Service.Speaker) ||
             this.accessory.addService(Service.Speaker, device.label, 'speakerService');
@@ -11,14 +12,15 @@ class SpeakerAccessory extends BaseAccessory {
         // 음소거 (Characteristic.Mute)
         this.speakerService.getCharacteristic(Characteristic.Mute)
             .on('get', (callback) => {
-                // SmartThings는 muted/unmuted 값을 사용합니다.
                 const isMuted = this.currentState.mute && this.currentState.mute.value === 'muted';
                 callback(null, isMuted);
             })
             .on('set', async (value, callback) => {
                 const command = value ? 'mute' : 'unmute';
                 await this.sendSmartThingsCommand('audioMute', command);
+                this.currentState.mute.value = command === 'mute' ? 'muted' : 'unmuted';
                 callback(null);
+                this.updateHomeKitCharacteristics();
             });
 
         // 볼륨 (Characteristic.Volume)
@@ -28,20 +30,19 @@ class SpeakerAccessory extends BaseAccessory {
                 callback(null, volume || 0);
             })
             .on('set', async (value, callback) => {
-                // setVolume 명령은 인수로 볼륨 값을 받습니다.
                 await this.sendSmartThingsCommand('audioVolume', 'setVolume', [value]);
+                this.currentState.volume.value = String(value);
                 callback(null);
+                this.updateHomeKitCharacteristics();
             });
-
-        // Home Mini는 'switch' Capability가 없으므로 전원 상태는 생략합니다.
     }
 
     updateHomeKitCharacteristics() {
         const isMuted = this.currentState.mute && this.currentState.mute.value === 'muted';
         const volume = this.currentState.volume && parseInt(this.currentState.volume.value, 10);
 
-        this.speakerService.updateCharacteristic(Characteristic.Mute, isMuted);
-        this.speakerService.updateCharacteristic(Characteristic.Volume, volume || 0);
+        this.speakerService.updateCharacteristic(this.Characteristic.Mute, isMuted);
+        this.speakerService.updateCharacteristic(this.Characteristic.Volume, volume || 0);
     }
 }
 
