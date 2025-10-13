@@ -35,6 +35,8 @@ class SpeakerAccessory extends BaseAccessory {
                 callback(null);
                 this.updateHomeKitCharacteristics();
             });
+
+        this.updateHomeKitCharacteristics();
     }
 
     updateHomeKitCharacteristics() {

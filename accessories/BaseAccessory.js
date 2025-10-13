@@ -76,8 +76,6 @@ class BaseAccessory {
         this.currentState = newState.components.main.state;
         this.updateHomeKitCharacteristics();
     }
-
-    updateHomeKitCharacteristics() {}
 }
 
 module.exports = BaseAccessory;

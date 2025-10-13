@@ -64,6 +64,8 @@ class AirConAccessory extends BaseAccessory {
         // 5. 현재 온도 (CurrentTemperature)
         this.acService.getCharacteristic(Characteristic.CurrentTemperature)
             .on('get', (callback) => callback(null, this.currentState.temperature.value || 25));
+
+        this.updateHomeKitCharacteristics();
     }
 
     updateHomeKitCharacteristics() {

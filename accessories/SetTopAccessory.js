@@ -40,6 +40,8 @@ class SetTopAccessory extends BaseAccessory {
                 callback(null);
                 this.updateHomeKitCharacteristics();
             });
+
+        this.updateHomeKitCharacteristics();
     }
 
     updateHomeKitCharacteristics() {
