@@ -44,7 +44,7 @@ class OAuthServer {
     }
 
     getAuthUrl(port) {
-        const redirectUri = `${this.config.callbackIp}:${port}/oauth/callback`;
+        const redirectUri = `${this.config.callbackIp}/oauth/callback`;
         const scope = 'r:devices:* x:devices:* r:scenes:* x:scenes:*';
         const state = 'random_state_' + Date.now();
         return `https://api.smartthings.com/oauth/authorize?response_type=code&client_id=${this.config.clientId}&scope=${scope}&state=${state}&redirect_uri=${redirectUri}`;
