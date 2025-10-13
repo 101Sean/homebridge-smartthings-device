@@ -15,7 +15,8 @@
     "platforms": [
       {
         "platform": "SmartThingsPlatform",
-        "name": "SmartThingsPlatform"
+        "name": "SmartThingsPlatform",
+        "plugin": "homebridge-smartthings-device"
       }
     ],
     "accessories": []
