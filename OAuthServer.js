@@ -44,7 +44,7 @@ class OAuthServer {
     getAuthUrl(port) {
         // ngrok 사용 시 포트 번호 없이 HTTPS 사용
         const redirectUri = `https://${this.config.callbackIp}/oauth/callback`;
-        const scope = 'r:devices:* x:devices:* l:devices r:scenes:* x:scenes:*';
+        const scope = 'r:devices:* x:devices:* r:scenes:* x:scenes:*';
         const state = 'random_state_' + Date.now();
         return `https://api.smartthings.com/oauth/authorize?response_type=code&client_id=${this.config.clientId}&scope=${scope}&state=${state}&redirect_uri=${redirectUri}`;
     }
