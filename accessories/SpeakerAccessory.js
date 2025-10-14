@@ -11,7 +11,7 @@ class SpeakerAccessory extends BaseAccessory {
 
         // 음소거 (Characteristic.Mute)
         this.speakerService.getCharacteristic(Characteristic.Mute)
-            .setProps({ required: true })
+            .setProps({ required: true }) // ✅ 필수 속성 명시
             .on('get', (callback) => {
                 const isMuted = this.currentState.mute && this.currentState.mute.value === 'muted';
                 callback(null, isMuted);

@@ -38,7 +38,7 @@ class SetTopAccessory extends BaseAccessory {
 
         // 볼륨 (Volume)
         this.speakerService.getCharacteristic(Characteristic.Volume)
-            .setProps({ minValue: 0, maxValue: 100, minStep: 1, required: true }) // ✅ setProps 추가
+            .setProps({ minValue: 0, maxValue: 100, minStep: 1, required: true })
             .on('get', (callback) => callback(null, parseInt(this.currentState.volume.value, 10)))
             .on('set', async (value, callback) => {
                 try {
@@ -62,7 +62,7 @@ class SetTopAccessory extends BaseAccessory {
         this.tvService.addLinkedService(this.speakerService);
         this.tvService.addLinkedService(this.inputService);
 
-        // 5. ActiveIdentifier (미디어 폼팩터 활성화)
+        // 5. ActiveIdentifier
         this.tvService.getCharacteristic(Characteristic.ActiveIdentifier)
             .on('get', (callback) => callback(null, 1));
 

@@ -6,7 +6,7 @@ class TVAccessory extends BaseAccessory {
 
         const { Service, Characteristic } = this.platform.api.hap;
 
-        // 1. Television Service
+        // 1. Television Service (아이콘/리모컨 폼팩터 활성화)
         this.tvService = this.accessory.getService(Service.Television) ||
             this.accessory.addService(Service.Television, device.label, 'tvService');
 
@@ -19,7 +19,7 @@ class TVAccessory extends BaseAccessory {
             .on('get', (callback) => callback(null, this.currentState.switch.value === 'on' ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE))
             .on('set', (value, callback) => this.setPowerState(value === Characteristic.Active.ACTIVE, callback));
 
-        // 2. Speaker Service
+        // 2. Speaker Service (볼륨/음소거 기능 구현)
         this.speakerService = this.accessory.getService(Service.Speaker) ||
             this.accessory.addService(Service.Speaker, device.label, 'speakerService');
 
@@ -36,9 +36,9 @@ class TVAccessory extends BaseAccessory {
                 } catch (e) { callback(e); }
             });
 
-        // 볼륨 (Volume)
+        // 볼륨 (Volume) -
         this.speakerService.getCharacteristic(Characteristic.Volume)
-            .setProps({ minValue: 0, maxValue: 100, minStep: 1, required: true }) // ✅ setProps 추가
+            .setProps({ minValue: 0, maxValue: 100, minStep: 1, required: true })
             .on('get', (callback) => callback(null, parseInt(this.currentState.volume.value, 10)))
             .on('set', async (value, callback) => {
                 try {
@@ -48,7 +48,7 @@ class TVAccessory extends BaseAccessory {
                 } catch (e) { callback(e); }
             });
 
-        // 3. InputSource Service
+        // 3. InputSource Service (TV 리모컨 폼팩터 활성화 필수)
         this.inputService = this.accessory.getService(Service.InputSource) ||
             this.accessory.addService(Service.InputSource, 'HDMI Input', 'input1');
 
