@@ -11,16 +11,19 @@ class SpeakerAccessory extends BaseAccessory {
 
         // 음소거 (Characteristic.Mute)
         this.speakerService.getCharacteristic(Characteristic.Mute)
+            .setProps({ required: true })
             .on('get', (callback) => {
                 const isMuted = this.currentState.mute && this.currentState.mute.value === 'muted';
                 callback(null, isMuted);
             })
             .on('set', async (value, callback) => {
-                const command = value ? 'mute' : 'unmute';
-                await this.sendSmartThingsCommand('audioMute', command);
-                this.currentState.mute.value = command === 'mute' ? 'muted' : 'unmuted';
-                callback(null);
-                this.updateHomeKitCharacteristics();
+                try {
+                    const command = value ? 'mute' : 'unmute';
+                    await this.sendSmartThingsCommand('audioMute', command);
+                    this.currentState.mute.value = command === 'mute' ? 'muted' : 'unmuted';
+                    callback(null);
+                    this.updateHomeKitCharacteristics();
+                } catch (e) { callback(e); }
             });
 
         // 볼륨 (Characteristic.Volume)
@@ -28,17 +31,20 @@ class SpeakerAccessory extends BaseAccessory {
             .setProps({
                 minStep: 1,
                 minValue: 0,
-                maxValue: 100
+                maxValue: 100,
+                required: true
             })
             .on('get', (callback) => {
                 const volume = this.currentState.volume && parseInt(this.currentState.volume.value, 10);
                 callback(null, volume || 0);
             })
             .on('set', async (value, callback) => {
-                await this.sendSmartThingsCommand('audioVolume', 'setVolume', [value]);
-                this.currentState.volume.value = String(value);
-                callback(null);
-                this.updateHomeKitCharacteristics();
+                try {
+                    await this.sendSmartThingsCommand('audioVolume', 'setVolume', [value]);
+                    this.currentState.volume.value = String(value);
+                    callback(null);
+                    this.updateHomeKitCharacteristics();
+                } catch (e) { callback(e); }
             });
 
         this.updateHomeKitCharacteristics();
