@@ -99,7 +99,7 @@ class AirConAccessory extends BaseAccessory {
                 this.updateHomeKitCharacteristics();
             });
 
-        super.updateHomeKitCharacteristics();
+        this.updateHomeKitCharacteristics();
     }
 
     updateHomeKitCharacteristics() {
