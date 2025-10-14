@@ -25,6 +25,11 @@ class SpeakerAccessory extends BaseAccessory {
 
         // 볼륨 (Characteristic.Volume)
         this.speakerService.getCharacteristic(Characteristic.Volume)
+            .setProps({
+                minStep: 1,
+                minValue: 0,
+                maxValue: 100
+            })
             .on('get', (callback) => {
                 const volume = this.currentState.volume && parseInt(this.currentState.volume.value, 10);
                 callback(null, volume || 0);

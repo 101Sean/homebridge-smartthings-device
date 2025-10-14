@@ -67,12 +67,10 @@ class BaseAccessory {
         }
 
         callback(null);
-        this.updateHomeKitCharacteristics();
     }
 
     updateDeviceState(newState) {
         this.currentState = newState.components.main.state;
-        this.updateHomeKitCharacteristics();
     }
 }
 
