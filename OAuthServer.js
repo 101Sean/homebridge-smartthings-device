@@ -1,6 +1,6 @@
 const http = require('http');
 const url = require('url');
-const axios = require('axios'); // 👈 node-fetch 대신 axios 사용
+const axios = require('axios');
 
 class OAuthServer {
     constructor(platform) {
@@ -33,8 +33,6 @@ class OAuthServer {
     }
 
     handleRequest(req, res) {
-        this.log.warn('===[DEBUG] 요청이 들어온 URL:', req.url);
-
         if (req.url.startsWith('/oauth/callback')) {
             this.handleOAuthCallback(req, res);
         } else {
@@ -46,7 +44,7 @@ class OAuthServer {
     getAuthUrl(port) {
         // ngrok 사용 시 포트 번호 없이 HTTPS 사용
         const redirectUri = `https://${this.config.callbackIp}/oauth/callback`;
-        const scope = 'r:devices:* x:devices:* r:scenes:* x:scenes:*';
+        const scope = 'r:devices:* x:devices:* l:devices r:scenes:* x:scenes:*';
         const state = 'random_state_' + Date.now();
         return `https://api.smartthings.com/oauth/authorize?response_type=code&client_id=${this.config.clientId}&scope=${scope}&state=${state}&redirect_uri=${redirectUri}`;
     }
