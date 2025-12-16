@@ -60,26 +60,39 @@ class TVAccessory {
     }
 
     async setActive(value) {
-        // IR 방식 Toggle 명령 전송s
-        await this.executeCommand('statelessPowerToggleButton', 'push');
+        await this.executeCommand('statelessPowerToggleButton', 'push', []);
     }
 
     async setRemoteKey(value) {
         const { Characteristic } = this.platform.api.hap;
         switch (value) {
-            case Characteristic.RemoteKey.ARROW_UP: await this.executeCommand('statelessAudioVolumeButton', 'volumeUp'); break;
-            case Characteristic.RemoteKey.ARROW_DOWN: await this.executeCommand('statelessAudioVolumeButton', 'volumeDown'); break;
-            case Characteristic.RemoteKey.ARROW_LEFT: await this.executeCommand('statelessChannelButton', 'channelDown'); break;
-            case Characteristic.RemoteKey.ARROW_RIGHT: await this.executeCommand('statelessChannelButton', 'channelUp'); break;
-            case Characteristic.RemoteKey.SELECT:
-            case Characteristic.RemoteKey.PLAY_PAUSE:
-                await this.executeCommand('statelessPowerToggleButton', 'push'); break;
+            case Characteristic.RemoteKey.ARROW_UP:
+                await this.executeCommand('statelessAudioVolumeButton', 'volumeUp', []);
+                break;
+            case Characteristic.RemoteKey.ARROW_DOWN:
+                await this.executeCommand('statelessAudioVolumeButton', 'volumeDown', []);
+                break;
+            case Characteristic.RemoteKey.ARROW_LEFT:
+                await this.executeCommand('statelessChannelButton', 'channelDown', []);
+                break;
+            case Characteristic.RemoteKey.ARROW_RIGHT:
+                await this.executeCommand('statelessChannelButton', 'channelUp', []);
+                break;
+            case Characteristic.RemoteKey.BACK:
+                await this.executeCommand('statelessCustomButton', 'setCustomButton', ['back']);
+                break;
+            case Characteristic.RemoteKey.INFORMATION:
+                await this.executeCommand('statelessCustomButton', 'setCustomButton', ['menu']);
+                break;
+            default:
+                this.log.debug(`[TV] 지원하지 않는 리모컨 키: ${value}`);
+                break;
         }
     }
 
     async setVolumeSelector(value) {
         const cmd = value === 0 ? 'volumeUp' : 'volumeDown';
-        await this.executeCommand('statelessAudioVolumeButton', cmd);
+        await this.executeCommand('statelessAudioVolumeButton', cmd, []);
     }
 }
 

@@ -16,8 +16,8 @@ class SmartThingsPlatform {
         this.api = api;
         this.accessories = [];
 
-        this.accessToken = config.accessToken;
-        this.refreshToken = config.refreshToken;
+        this.accessToken = config.accessToken || null;
+        this.refreshToken = config.refreshToken || null;
 
         this.api.on('didFinishLaunching', () => {
             this.initAuthentication();
@@ -26,9 +26,10 @@ class SmartThingsPlatform {
 
     initAuthentication() {
         if (this.accessToken) {
-            this.log.info('인증 토큰 로드 완료. 기기 조회를 시작합니다.');
+            this.log.info('저장된 토큰을 확인했습니다. 기기 조회를 시작합니다.');
             this.discoverDevices();
         } else {
+            this.log.warn('인증 토큰이 없습니다. OAuth 서버를 실행합니다.');
             const server = new OAuthServer(this);
             server.start();
         }
@@ -39,9 +40,14 @@ class SmartThingsPlatform {
     }
 
     persistTokens() {
-        this.config.accessToken = this.accessToken;
-        this.config.refreshToken = this.refreshToken;
-        this.log.info('토큰이 설정에 성공적으로 반영되었습니다.');
+        this.log.info('====================================================');
+        this.log.info('토큰 발급 성공! 아래 내용을 복사하여 config.json에 넣으세요:');
+        this.log.info(`"accessToken": "${this.accessToken}"`);
+        this.log.info(`"refreshToken": "${this.refreshToken}"`);
+        this.log.info('저장 후 재시작하면 더 이상 인증 페이지가 뜨지 않습니다.');
+        this.log.info('====================================================');
+
+        this.discoverDevices();
     }
 
     async discoverDevices() {
