@@ -1,80 +1,117 @@
-const BaseAccessory = require('./BaseAccessory');
+const { Service, Characteristic, Categories, PlatformAccessory } = require('hap-nodejs');
 
-class TVAccessory extends BaseAccessory {
-    constructor(platform, accessory, device) {
-        super(platform, accessory, device);
+class TVAccessory {
+    constructor(platform, device) {
+        this.platform = platform;
+        this.log = platform.log;
+        this.device = device;
+        this.deviceId = device.deviceId;
+        this.name = device.label || 'Smart TV';
 
-        const { Service, Characteristic } = this.platform.api.hap;
+        const uuid = platform.api.hap.uuid.generate(this.deviceId);
+        this.accessory = new PlatformAccessory(this.name, uuid, Categories.TELEVISION);
 
-        // 1. Television Service (아이콘/리모컨 폼팩터 활성화)
-        this.tvService = this.accessory.getService(Service.Television) ||
-            this.accessory.addService(Service.Television, device.label, 'tvService');
+        // Accessory Information
+        this.accessory.getService(Service.AccessoryInformation)
+            .setCharacteristic(Characteristic.Manufacturer, 'SmartThings IR')
+            .setCharacteristic(Characteristic.Model, device.presentationId || 'IR TV')
+            .setCharacteristic(Characteristic.SerialNumber, this.deviceId);
 
-        this.tvService.setCharacteristic(Characteristic.ConfiguredName, device.label);
-        this.tvService.setCharacteristic(Characteristic.SleepDiscoveryMode, Characteristic.SleepDiscoveryMode.ALWAYS_DISCOVERABLE);
-        this.tvService.setCharacteristic(Characteristic.PictureMode, Characteristic.PictureMode.OTHER);
-
-        // 전원 On/Off (Characteristic.Active)
+        // Television Service
+        this.tvService = new Service.Television(this.name);
         this.tvService.getCharacteristic(Characteristic.Active)
-            .on('get', (callback) => callback(null, this.currentState.switch.value === 'on' ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE))
-            .on('set', (value, callback) => this.setPowerState(value === Characteristic.Active.ACTIVE, callback));
+            .onGet(this.getActive.bind(this))
+            .onSet(this.setActive.bind(this));
 
-        // 2. Speaker Service (볼륨/음소거 기능 구현)
-        this.speakerService = this.accessory.getService(Service.Speaker) ||
-            this.accessory.addService(Service.Speaker, device.label, 'speakerService');
+        this.tvService.getCharacteristic(Characteristic.RemoteKey)
+            .onSet(this.setRemoteKey.bind(this));
 
-        // 음소거 (Mute)
+        // TelevisionSpeaker (Home mini 볼륨 제어)
+        this.speakerService = new Service.TelevisionSpeaker();
+        this.speakerService
+            .setCharacteristic(Characteristic.Active, Characteristic.Active.ACTIVE)
+            .setCharacteristic(Characteristic.VolumeControlType, Characteristic.VolumeControlType.RELATIVE);
+
+        this.speakerService.getCharacteristic(Characteristic.VolumeSelector)
+            .onSet(this.setVolumeSelector.bind(this));
+
         this.speakerService.getCharacteristic(Characteristic.Mute)
-            .setProps({ required: true })
-            .on('get', (callback) => callback(null, this.currentState.mute.value === 'muted'))
-            .on('set', async (value, callback) => {
-                try {
-                    await this.sendSmartThingsCommand('statelessAudioMuteButton', 'push');
-                    this.currentState.mute.value = value ? 'muted' : 'unmuted';
-                    callback(null);
-                    this.updateHomeKitCharacteristics();
-                } catch (e) { callback(e); }
-            });
+            .onGet(this.getMute.bind(this))
+            .onSet(this.setMute.bind(this));
 
-        // 볼륨 (Volume) -
-        this.speakerService.getCharacteristic(Characteristic.Volume)
-            .setProps({ minValue: 0, maxValue: 100, minStep: 1, required: true })
-            .on('get', (callback) => callback(null, parseInt(this.currentState.volume.value, 10)))
-            .on('set', async (value, callback) => {
-                try {
-                    this.currentState.volume.value = String(value);
-                    callback(null);
-                    this.updateHomeKitCharacteristics();
-                } catch (e) { callback(e); }
-            });
-
-        // 3. InputSource Service (TV 리모컨 폼팩터 활성화 필수)
-        this.inputService = this.accessory.getService(Service.InputSource) ||
-            this.accessory.addService(Service.InputSource, 'HDMI Input', 'input1');
-
-        this.inputService
-            .setCharacteristic(Characteristic.Identifier, 1)
-            .setCharacteristic(Characteristic.ConfiguredName, 'HDMI 1')
-            .setCharacteristic(Characteristic.IsConfigured, Characteristic.IsConfigured.CONFIGURED)
-            .setCharacteristic(Characteristic.InputSourceType, Characteristic.InputSourceType.HDMI);
-
-        // 4. 필수 연결 (Linking)
         this.tvService.addLinkedService(this.speakerService);
-        this.tvService.addLinkedService(this.inputService);
+        this.accessory.addService(this.tvService);
+        this.accessory.addService(this.speakerService);
 
-        // 5. ActiveIdentifier (미디어 폼팩터 활성화)
-        this.tvService.getCharacteristic(Characteristic.ActiveIdentifier)
-            .on('get', (callback) => callback(null, 1));
+        // External Publish
+        this.platform.api.publishExternalAccessories([this.accessory]);
 
-        this.updateHomeKitCharacteristics();
+        this.log.info(`[TV] "${this.name}" published as EXTERNAL accessory`);
     }
 
-    updateHomeKitCharacteristics() {
-        const powerState = this.currentState.switch.value === 'on' ? this.Characteristic.Active.ACTIVE : this.Characteristic.Active.INACTIVE;
-        this.tvService.updateCharacteristic(this.Characteristic.Active, powerState);
+    async executeCommand(capability, command, args = []) {
+        const payload = {
+            commands: [{
+                component: 'main',
+                capability: capability,
+                command: command,
+                arguments: args
+            }]
+        };
+        await this.platform.client.devices.executeCommand(this.deviceId, payload);
+    }
 
-        this.speakerService.updateCharacteristic(this.Characteristic.Mute, this.currentState.mute.value === 'muted');
-        this.speakerService.updateCharacteristic(this.Characteristic.Volume, parseInt(this.currentState.volume.value, 10));
+    async getActive() {
+        // stateless라 상태 없음 → 항상 1 반환 (켜져 있다고 가정)
+        return Characteristic.Active.ACTIVE;
+    }
+
+    async setActive(value) {
+        if (value === Characteristic.Active.ACTIVE) {
+            await this.executeCommand('statelessPowerToggleButton', 'push');
+        }
+    }
+
+    async setRemoteKey(value) {
+        switch (value) {
+            // case Characteristic.RemoteKey.POWER_MODE: // 전원 (보통 Active에서 처리)
+            case Characteristic.RemoteKey.REWIND:
+            case Characteristic.RemoteKey.FAST_FORWARD:
+            case Characteristic.RemoteKey.PLAY_PAUSE:
+                break;
+            case Characteristic.RemoteKey.ARROW_RIGHT:
+                await this.executeCommand('statelessChannelButton', 'channelUp');
+                break;
+            case Characteristic.RemoteKey.ARROW_LEFT:
+                await this.executeCommand('statelessChannelButton', 'channelDown');
+                break;
+            case Characteristic.RemoteKey.ARROW_UP:
+                await this.executeCommand('statelessAudioVolumeButton', 'volumeUp');
+                break;
+            case Characteristic.RemoteKey.ARROW_DOWN:
+                await this.executeCommand('statelessAudioVolumeButton', 'volumeDown');
+                break;
+            // INFORMATION, SELECT, BACK 등은 custom.button으로 매핑 가능
+        }
+    }
+
+    async setVolumeSelector(value) {
+        // VOLUME_UP = 0, VOLUME_DOWN = 1
+        const cmd = value === 0 ? 'volumeUp' : 'volumeDown';
+        await this.executeCommand('statelessAudioVolumeButton', cmd);
+    }
+
+    async getMute() {
+        // 상태 없음 → false 반환
+        return false;
+    }
+
+    async setMute(value) {
+        if (value) {
+            await this.executeCommand('statelessAudioMuteButton', 'mute');
+        } else {
+            await this.executeCommand('statelessAudioMuteButton', 'unmute');
+        }
     }
 }
 

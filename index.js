@@ -4,13 +4,13 @@ const axios = require('axios');
 const TVAccessory = require('./accessories/TVAccessory');
 const SetTopAccessory = require('./accessories/SetTopAccessory');
 const AirConAccessory = require('./accessories/AirConAccessory');
-const SpeakerAccessory = require('./accessories/SpeakerAccessory');
+const PlugAccessory = require('./accessories/PlugAccessory');
 
 const ACCESSORY_CLASSES = [
     TVAccessory,
     SetTopAccessory,
     AirConAccessory,
-    SpeakerAccessory
+    PlugAccessory
 ];
 
 class SmartThingsPlatform {
@@ -64,20 +64,24 @@ class SmartThingsPlatform {
             for (const device of devices) {
                 const uuid = this.api.hap.uuid.generate(device.deviceId);
                 let accessory = this.accessories.find(acc => acc.UUID === uuid);
-                let accessoryInstance = null;
 
-                // 장치 종류에 따라 액세서리 클래스 매핑
-                const deviceLabel = device.label || device.name;
+                const caps = device.components?.[0]?.capabilities?.map(c => c.id) || [];
+                let AccessoryClass = null;
 
-                if (deviceLabel.includes('TV')) {
-                    accessoryInstance = TVAccessory;
-                } else if (deviceLabel.includes('Set-Top')) {
-                    accessoryInstance = SetTopAccessory;
-                } else if (deviceLabel.includes('Air Conditioner')) {
-                    accessoryInstance = AirConAccessory;
-                } else if (deviceLabel.includes('mini')) { // Home mini 가정
-                    accessoryInstance = SpeakerAccessory;
-                } else {
+                if (caps.includes('statelessPowerToggleButton') && caps.includes('statelessChannelButton')) {
+                    if (device.label.includes('TV')) {
+                        AccessoryClass = TVAccessory;
+                    } else if (device.label.includes('Set-Top')) {
+                        AccessoryClass = SetTopAccessory;
+                    }
+                } else if (caps.includes('airConditionerMode') || caps.includes('thermostatCoolingSetpoint')) {
+                    AccessoryClass = AirConAccessory;
+                } else if (caps.includes('switch') && caps.includes('powerMeter')) {
+                    AccessoryClass = PlugAccessory;
+                }
+
+                if (!AccessoryClass) {
+                    this.log.debug(`Skipping unsupported device: ${device.label}`);
                     continue;
                 }
 
@@ -86,13 +90,13 @@ class SmartThingsPlatform {
                     continue;
                 }
 
-                if (!accessory) {
-                    accessory = new this.api.platformAccessory(deviceLabel, uuid);
-                    this.api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [accessory]);
-                    this.log.info(`새 액세서리 등록: ${deviceLabel}`);
-                }
+                if (!accessory) accessory = new this.api.platformAccessory(device.label, uuid);
 
-                new accessoryInstance(this, accessory, device);
+                new AccessoryClass(this, accessory, device);
+
+                if (!['TVAccessory', 'SetTopAccessory'].includes(AccessoryClass.name)) {
+                    this.api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsPlatform', [accessory]);
+                }
             }
 
         } catch (error) {

@@ -1,135 +1,124 @@
-const BaseAccessory = require('./BaseAccessory');
+const { Service, Characteristic, PlatformAccessory } = require('hap-nodejs');
 
-class AirConAccessory extends BaseAccessory {
-    constructor(platform, accessory, device) {
-        super(platform, accessory, device);
+class AirConAccessory {
+    constructor(platform, device) {
+        this.platform = platform;
+        this.log = platform.log;
+        this.device = device;
+        this.deviceId = device.deviceId;
+        this.name = device.label || 'Air Conditioner';
 
-        const { Service, Characteristic } = this.platform.api.hap;
+        const uuid = platform.api.hap.uuid.generate(this.deviceId);
+        this.accessory = new PlatformAccessory(this.name, uuid);
 
-        this.thermostatService = this.accessory.getService(Service.HeaterCooler) ||
-            this.accessory.addService(Service.HeaterCooler, device.label, 'thermostatService');
+        // Accessory Information
+        this.accessory.getService(Service.AccessoryInformation)
+            .setCharacteristic(Characteristic.Manufacturer, 'SmartThings IR')
+            .setCharacteristic(Characteristic.Model, device.presentationId || 'IR AC')
+            .setCharacteristic(Characteristic.SerialNumber, this.deviceId);
 
-        // 1. Active
-        this.thermostatService.getCharacteristic(Characteristic.Active)
-            .on('get', (callback) => {
-                const powerState = this.currentState.switch.value === 'on' ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE;
-                callback(null, powerState);
-            })
-            .on('set', (value, callback) => {
-                this.setPowerState(value === Characteristic.Active.ACTIVE, callback);
-            });
+        // HeaterCooler Service
+        this.service = new Service.HeaterCooler(this.name);
+        this.service.getCharacteristic(Characteristic.Active)
+            .onGet(this.getActive.bind(this))
+            .onSet(this.setActive.bind(this));
 
-        // 2. Current Heating/Cooling State
-        this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
-            .on('get', (callback) => {
-                const powerState = this.currentState.switch && this.currentState.switch.value;
-                const mode = this.currentState.airConditionerMode && this.currentState.airConditionerMode.value;
-                let currentState = Characteristic.CurrentHeatingCoolingState.OFF;
+        this.service.getCharacteristic(Characteristic.CurrentHeaterCoolerState)
+            .onGet(this.getCurrentState.bind(this));
 
-                if (powerState === 'on') {
-                    if (mode === 'cool') currentState = Characteristic.CurrentHeatingCoolingState.COOL;
-                    else if (mode === 'auto') currentState = Characteristic.CurrentHeatingCoolingState.AUTO;
-                    else if (mode === 'heat') currentState = Characteristic.CurrentHeatingCoolingState.HEAT;
-                }
-                callback(null, currentState);
-            });
+        this.service.getCharacteristic(Characteristic.TargetHeaterCoolerState)
+            .onGet(this.getTargetState.bind(this))
+            .onSet(this.setTargetState.bind(this));
 
-        // 3. Target Heating/Cooling State (모드 설정)
-        this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState)
-            .setProps({validValues: [Characteristic.TargetHeatingCoolingState.OFF, Characteristic.TargetHeatingCoolingState.COOL, Characteristic.TargetHeatingCoolingState.AUTO]})
-            .on('get', (callback) => {
-                const mode = this.currentState.airConditionerMode && this.currentState.airConditionerMode.value;
-                let targetState = Characteristic.TargetHeatingCoolingState.OFF;
+        this.service.getCharacteristic(Characteristic.CurrentTemperature)
+            .onGet(this.getCurrentTemperature.bind(this));
 
-                if (mode === 'cool') targetState = Characteristic.TargetHeatingCoolingState.COOL;
-                else if (mode === 'auto') targetState = Characteristic.TargetHeatingCoolingState.AUTO;
-                else if (mode === 'heat') targetState = Characteristic.TargetHeatingCoolingState.HEAT;
+        this.service.getCharacteristic(Characteristic.CoolingThresholdTemperature)
+            .onGet(this.getCoolingThreshold.bind(this))
+            .onSet(this.setCoolingThreshold.bind(this));
 
-                callback(null, targetState);
-            })
-            .on('set', async (value, callback) => {
-                let modeCommand = '';
+        this.service.getCharacteristic(Characteristic.RotationSpeed)
+            .onGet(this.getRotationSpeed.bind(this))
+            .onSet(this.setRotationSpeed.bind(this));
 
-                try {
-                    // OFF가 아니면 전원 켜기
-                    if (value !== Characteristic.TargetHeatingCoolingState.OFF) {
-                        await this.sendSmartThingsCommand('switch', 'on');
-                        this.currentState.switch.value = 'on';
-                    }
+        this.accessory.addService(this.service);
 
-                    if (value === Characteristic.TargetHeatingCoolingState.COOL) modeCommand = 'cool';
-                    else if (value === Characteristic.TargetHeatingCoolingState.AUTO) modeCommand = 'auto';
-                    else if (value === Characteristic.TargetHeatingCoolingState.OFF) {
-                        await this.sendSmartThingsCommand('switch', 'off');
-                        this.currentState.switch.value = 'off';
-                        modeCommand = 'off';
-                    }
+        // Bridged 등록
+        this.platform.api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsDevice', [this.accessory]);
 
-                    if (modeCommand !== 'off') {
-                        await this.sendSmartThingsCommand('airConditionerMode', 'setAirConditionerMode', [modeCommand]);
-                        this.currentState.airConditionerMode.value = modeCommand;
-                    }
-
-                    this.currentState.targetHeatingCoolingState = { value: value };
-                    callback(null);
-                    this.updateHomeKitCharacteristics();
-                } catch (e) { callback(e); }
-            });
-
-        // 4. Current Temperature (온도 바 활성화)
-        this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature)
-            .setProps({ minValue: 10, maxValue: 60, minStep: 0.1 })
-            .on('get', (callback) => {
-                const currentTemp = this.currentState.temperature && parseFloat(this.currentState.temperature.value);
-                callback(null, (currentTemp && currentTemp >= 10) ? currentTemp : 10);
-            });
-
-        // 5. Target Temperature (Cooling Setpoint 사용)
-        this.thermostatService.getCharacteristic(Characteristic.CoolingThresholdTemperature)
-            .setProps({ minValue: 18, maxValue: 30, minStep: 1 })
-            .on('get', (callback) => {
-                const targetTemp = this.currentState.thermostatCoolingSetpoint && parseFloat(this.currentState.thermostatCoolingSetpoint.value);
-                callback(null, targetTemp || 24);
-            })
-            .on('set', async (value, callback) => {
-                try {
-                    await this.sendSmartThingsCommand('thermostatCoolingSetpoint', 'setCoolingSetpoint', [value]);
-                    this.currentState.thermostatCoolingSetpoint.value = String(value);
-                    callback(null);
-                    this.updateHomeKitCharacteristics();
-                } catch (e) { callback(e); }
-            });
-
-        this.updateHomeKitCharacteristics();
+        this.log.info(`[AC] "${this.name}" registered as bridged accessory`);
     }
 
-    updateHomeKitCharacteristics() {
-        const { Characteristic } = this;
+    async executeCommand(capability, command, args = []) {
+        const payload = {
+            commands: [{
+                component: 'main',
+                capability: capability,
+                command: command,
+                arguments: args
+            }]
+        };
+        await this.platform.client.devices.executeCommand(this.deviceId, payload);
+    }
 
-        const powerState = this.currentState.switch.value === 'on' ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE;
-        this.thermostatService.updateCharacteristic(Characteristic.Active, powerState);
+    // Active (전원)
+    async getActive() {
+        // stateless라 상태 없음 → switch capability로 조회 필요하면 polling
+        return Characteristic.Active.ACTIVE; // 기본 ON
+    }
 
-        const mode = this.currentState.airConditionerMode && this.currentState.airConditionerMode.value;
-        let currentState = Characteristic.CurrentHeatingCoolingState.OFF;
-        if (powerState === Characteristic.Active.ACTIVE) {
-            if (mode === 'cool') currentState = Characteristic.CurrentHeatingCoolingState.COOL;
-            else if (mode === 'auto') currentState = Characteristic.CurrentHeatingCoolingState.AUTO;
-            else if (mode === 'heat') currentState = Characteristic.CurrentHeatingCoolingState.HEAT;
+    async setActive(value) {
+        if (value === Characteristic.Active.ACTIVE) {
+            await this.executeCommand('switch', 'on');
+        } else {
+            await this.executeCommand('switch', 'off');
         }
-        this.thermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, currentState);
+    }
 
-        const targetMode = this.currentState.airConditionerMode && this.currentState.airConditionerMode.value;
-        let targetState = Characteristic.TargetHeatingCoolingState.OFF;
-        if (targetMode === 'cool') targetState = Characteristic.TargetHeatingCoolingState.COOL;
-        else if (targetMode === 'auto') targetState = Characteristic.TargetHeatingCoolingState.AUTO;
-        else if (targetMode === 'heat') targetState = Characteristic.TargetHeatingCoolingState.HEAT;
-        this.thermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, targetState);
+    // CurrentHeaterCoolerState (현재 상태)
+    async getCurrentState() {
+        // airConditionerMode로 매핑 (실제 상태 조회 API 필요)
+        return Characteristic.CurrentHeaterCoolerState.COOLING;
+    }
 
-        const currentTemp = this.currentState.temperature && parseFloat(this.currentState.temperature.value);
-        this.thermostatService.updateCharacteristic(Characteristic.CurrentTemperature, currentTemp || 10);
+    // TargetHeaterCoolerState (모드)
+    async getTargetState() {
+        return Characteristic.TargetHeaterCoolerState.COOL; // 기본 냉방
+    }
 
-        const targetTemp = this.currentState.thermostatCoolingSetpoint && parseFloat(this.currentState.thermostatCoolingSetpoint.value);
-        this.thermostatService.updateCharacteristic(Characteristic.CoolingThresholdTemperature, targetTemp || 24);
+    async setTargetState(value) {
+        let mode = 'cool';
+        if (value === Characteristic.TargetHeaterCoolerState.HEAT) mode = 'heat';
+        else if (value === Characteristic.TargetHeaterCoolerState.AUTO) mode = 'auto';
+        else if (value === Characteristic.TargetHeaterCoolerState.OFF) mode = 'off';
+        await this.executeCommand('airConditionerMode', 'setAirConditionerMode', [mode]);
+    }
+
+    // CurrentTemperature
+    async getCurrentTemperature() {
+        // thermostatCoolingSetpoint으로 조회 (실제 getStatus 필요)
+        return 25; // placeholder
+    }
+
+    // CoolingThresholdTemperature (설정 온도)
+    async getCoolingThreshold() {
+        return 24; // placeholder
+    }
+
+    async setCoolingThreshold(value) {
+        await this.executeCommand('thermostatCoolingSetpoint', 'setCoolingSetpoint', [value]);
+    }
+
+    // RotationSpeed (팬 속도 0-100%)
+    async getRotationSpeed() {
+        return 50; // placeholder
+    }
+
+    async setRotationSpeed(value) {
+        let fanMode = 'medium';
+        if (value > 66) fanMode = 'high';
+        else if (value < 33) fanMode = 'low';
+        await this.executeCommand('airConditionerFanMode', 'setFanMode', [fanMode]);
     }
 }
 
