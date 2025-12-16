@@ -1,24 +1,25 @@
-const { Service, Characteristic, PlatformAccessory } = require('hap-nodejs');
+const axios = require('axios');
 
 class AirConAccessory {
-    constructor(platform, device) {
+    constructor(platform, accessory, device) {
         this.platform = platform;
         this.log = platform.log;
+        this.accessory = accessory; // index.js에서 생성/캐시된 객체를 받음
         this.device = device;
         this.deviceId = device.deviceId;
         this.name = device.label || 'Air Conditioner';
 
-        const uuid = platform.api.hap.uuid.generate(this.deviceId);
-        this.accessory = new PlatformAccessory(this.name, uuid);
+        const { Service, Characteristic } = this.platform.api.hap;
 
-        // Accessory Information
         this.accessory.getService(Service.AccessoryInformation)
             .setCharacteristic(Characteristic.Manufacturer, 'SmartThings IR')
             .setCharacteristic(Characteristic.Model, device.presentationId || 'IR AC')
             .setCharacteristic(Characteristic.SerialNumber, this.deviceId);
 
-        // HeaterCooler Service
-        this.service = new Service.HeaterCooler(this.name);
+        // HeaterCooler
+        this.service = this.accessory.getService(Service.HeaterCooler) ||
+            this.accessory.addService(Service.HeaterCooler, this.name);
+
         this.service.getCharacteristic(Characteristic.Active)
             .onGet(this.getActive.bind(this))
             .onSet(this.setActive.bind(this));
@@ -30,94 +31,84 @@ class AirConAccessory {
             .onGet(this.getTargetState.bind(this))
             .onSet(this.setTargetState.bind(this));
 
+        // 온도 설정 범위 제한
         this.service.getCharacteristic(Characteristic.CurrentTemperature)
             .onGet(this.getCurrentTemperature.bind(this));
 
         this.service.getCharacteristic(Characteristic.CoolingThresholdTemperature)
+            .setProps({ minStep: 1, minValue: 18, maxValue: 30 })
             .onGet(this.getCoolingThreshold.bind(this))
             .onSet(this.setCoolingThreshold.bind(this));
 
+        // 팬 속도
         this.service.getCharacteristic(Characteristic.RotationSpeed)
+            .setProps({ minStep: 33, minValue: 0, maxValue: 100 })
             .onGet(this.getRotationSpeed.bind(this))
             .onSet(this.setRotationSpeed.bind(this));
-
-        this.accessory.addService(this.service);
-
-        // Bridged 등록
-        this.platform.api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsDevice', [this.accessory]);
-
-        this.log.info(`[AC] "${this.name}" registered as bridged accessory`);
     }
 
     async executeCommand(capability, command, args = []) {
-        const payload = {
-            commands: [{
-                component: 'main',
-                capability: capability,
-                command: command,
-                arguments: args
-            }]
-        };
-        await this.platform.client.devices.executeCommand(this.deviceId, payload);
-    }
-
-    // Active (전원)
-    async getActive() {
-        // stateless라 상태 없음 → switch capability로 조회 필요하면 polling
-        return Characteristic.Active.ACTIVE; // 기본 ON
-    }
-
-    async setActive(value) {
-        if (value === Characteristic.Active.ACTIVE) {
-            await this.executeCommand('switch', 'on');
-        } else {
-            await this.executeCommand('switch', 'off');
+        try {
+            await axios.post(`https://api.smartthings.com/v1/devices/${this.deviceId}/commands`, {
+                commands: [{ component: 'main', capability: capability, command: command, arguments: args }]
+            }, {
+                headers: { 'Authorization': `Bearer ${this.platform.accessToken}` }
+            });
+            this.log.debug(`[AC] 명령 성공: ${command}(${args})`);
+        } catch (error) {
+            this.log.error(`[AC] 명령 실패: ${error.message}`);
         }
     }
 
-    // CurrentHeaterCoolerState (현재 상태)
-    async getCurrentState() {
-        // airConditionerMode로 매핑 (실제 상태 조회 API 필요)
-        return Characteristic.CurrentHeaterCoolerState.COOLING;
+    async getActive() {
+        // 실제 상태 조회가 안 될 경우 기본값 반환
+        return this.platform.api.hap.Characteristic.Active.ACTIVE;
     }
 
-    // TargetHeaterCoolerState (모드)
+    async setActive(value) {
+        const command = (value === this.platform.api.hap.Characteristic.Active.ACTIVE) ? 'on' : 'off';
+        await this.executeCommand('switch', command);
+    }
+
+    async getCurrentState() {
+        // 현재 냉방 중임을 표시
+        return this.platform.api.hap.Characteristic.CurrentHeaterCoolerState.COOLING;
+    }
+
     async getTargetState() {
-        return Characteristic.TargetHeaterCoolerState.COOL; // 기본 냉방
+        return this.platform.api.hap.Characteristic.TargetHeaterCoolerState.COOL;
     }
 
     async setTargetState(value) {
+        const { TargetHeaterCoolerState } = this.platform.api.hap.Characteristic;
         let mode = 'cool';
-        if (value === Characteristic.TargetHeaterCoolerState.HEAT) mode = 'heat';
-        else if (value === Characteristic.TargetHeaterCoolerState.AUTO) mode = 'auto';
-        else if (value === Characteristic.TargetHeaterCoolerState.OFF) mode = 'off';
+        if (value === TargetHeaterCoolerState.HEAT) mode = 'heat';
+        else if (value === TargetHeaterCoolerState.AUTO) mode = 'auto';
+
         await this.executeCommand('airConditionerMode', 'setAirConditionerMode', [mode]);
     }
 
-    // CurrentTemperature
     async getCurrentTemperature() {
-        // thermostatCoolingSetpoint으로 조회 (실제 getStatus 필요)
-        return 25; // placeholder
+        return 24; // 센서가 있다면 실제값 매핑 권장
     }
 
-    // CoolingThresholdTemperature (설정 온도)
     async getCoolingThreshold() {
-        return 24; // placeholder
+        return 24;
     }
 
     async setCoolingThreshold(value) {
         await this.executeCommand('thermostatCoolingSetpoint', 'setCoolingSetpoint', [value]);
     }
 
-    // RotationSpeed (팬 속도 0-100%)
     async getRotationSpeed() {
-        return 50; // placeholder
+        return 33; // Low: 33, Mid: 66, High: 100
     }
 
     async setRotationSpeed(value) {
-        let fanMode = 'medium';
-        if (value > 66) fanMode = 'high';
-        else if (value < 33) fanMode = 'low';
+        let fanMode = 'low';
+        if (value > 70) fanMode = 'high';
+        else if (value > 30) fanMode = 'medium';
+
         await this.executeCommand('airConditionerFanMode', 'setFanMode', [fanMode]);
     }
 }

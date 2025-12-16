@@ -1,63 +1,55 @@
-const { Service, Characteristic, PlatformAccessory } = require('hap-nodejs');
+const axios = require('axios');
 
 class PlugAccessory {
-    constructor(platform, device) {
+    constructor(platform, accessory, device) {
         this.platform = platform;
         this.log = platform.log;
-        this.device = device;
+        this.accessory = accessory;
         this.deviceId = device.deviceId;
-        this.name = device.label || 'Plug Mini';
+        this.name = device.label || 'Smart Plug';
 
-        const uuid = platform.api.hap.uuid.generate(this.deviceId);
-        this.accessory = new PlatformAccessory(this.name, uuid);
+        const { Service, Characteristic } = this.platform.api.hap;
 
-        // Accessory Information
         this.accessory.getService(Service.AccessoryInformation)
-            .setCharacteristic(Characteristic.Manufacturer, 'GOQUAL')
-            .setCharacteristic(Characteristic.Model, device.viper.modelName || 'EP2-H')
+            .setCharacteristic(Characteristic.Manufacturer, 'SmartThings')
+            .setCharacteristic(Characteristic.Model, 'Smart Plug Mini')
             .setCharacteristic(Characteristic.SerialNumber, this.deviceId);
 
-        // Outlet Service
-        this.service = new Service.Outlet(this.name);
+        this.service = this.accessory.getService(Service.Outlet) ||
+            this.accessory.addService(Service.Outlet, this.name);
+
         this.service.getCharacteristic(Characteristic.On)
-            .onGet(this.getOn.bind(this))
-            .onSet(this.setOn.bind(this));
+            .onGet(this.getOnState.bind(this))
+            .onSet(this.setOnState.bind(this));
 
         this.service.getCharacteristic(Characteristic.OutletInUse)
             .onGet(this.getInUse.bind(this));
-
-        this.accessory.addService(this.service);
-
-        // Bridged 등록
-        this.platform.api.registerPlatformAccessories('homebridge-smartthings-device', 'SmartThingsDevice', [this.accessory]);
-
-        this.log.info(`[Plug] "${this.name}" registered as bridged accessory`);
     }
 
     async executeCommand(capability, command, args = []) {
-        const payload = {
-            commands: [{
-                component: 'main',
-                capability: capability,
-                command: command,
-                arguments: args
-            }]
-        };
-        await this.platform.client.devices.executeCommand(this.deviceId, payload);
+        try {
+            await axios.post(`https://api.smartthings.com/v1/devices/${this.deviceId}/commands`, {
+                commands: [{ component: 'main', capability: capability, command: command, arguments: args }]
+            }, {
+                headers: { 'Authorization': `Bearer ${this.platform.accessToken}` }
+            });
+        } catch (error) {
+            this.log.error(`[Plug] 명령 실패: ${error.message}`);
+        }
     }
 
-    async getOn() {
-        // switch 상태 조회 (실제 getStatus 필요)
-        return true; // placeholder
+    async getOnState() {
+        return true;
     }
 
-    async setOn(value) {
-        await this.executeCommand('switch', value ? 'on' : 'off');
+    async setOnState(value) {
+        const command = value ? 'on' : 'off';
+        await this.executeCommand('switch', command);
+        this.log.info(`[Plug] ${this.name} 전원: ${command}`);
     }
 
     async getInUse() {
-        // powerMeter.power > 0 일 때 true (실제 getStatus 필요)
-        return true; // placeholder
+        return true;
     }
 }
 
