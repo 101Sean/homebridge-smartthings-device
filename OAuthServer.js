@@ -98,26 +98,31 @@ class OAuthServer {
     async exchangeCodeForToken(code) {
         const tokenUrl = 'https://api.smartthings.com/oauth/token';
 
-        // Body에 인증 정보를 포함하는 방식이 가장 안정적입니다.
+        const authHeader = Buffer.from(`${this.config.clientId}:${this.config.clientSecret}`).toString('base64');
+
         const params = new URLSearchParams();
         params.append('grant_type', 'authorization_code');
-        params.append('client_id', this.config.clientId);
-        params.append('client_secret', this.config.clientSecret);
         params.append('code', code);
         params.append('redirect_uri', this.redirectUri);
 
         try {
+            this.log.debug('토큰 교환 요청 중...');
             const response = await axios.post(tokenUrl, params.toString(), {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
+                    'Authorization': `Basic ${authHeader}`,
                     'Accept': 'application/json'
                 }
             });
+
+            this.log.info('토큰 교환 성공!');
             return response.data;
         } catch (error) {
             const status = error.response ? error.response.status : 'N/A';
-            const errorDetail = error.response ? JSON.stringify(error.response.data) : error.message;
-            throw new Error(`[${status}] SmartThings API Error: ${errorDetail}`);
+            const errorData = error.response ? JSON.stringify(error.response.data) : 'No response data';
+
+            this.log.error(`[${status}] 토큰 교환 실패 사유: ${errorData}`);
+            throw new Error(`SmartThings API Error: ${status}`);
         }
     }
 }
