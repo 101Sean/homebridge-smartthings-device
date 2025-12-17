@@ -72,29 +72,29 @@ class SetTopAccessory {
     }
 
     async setActive(value) {
-        await this.executeCommand('statelessPowerToggleButton', 'push', []);
+        await this.executeCommand('statelessPowerToggleButton', 'setButton', ['powerToggle']);
     }
 
     async setRemoteKey(value) {
         const { Characteristic } = this.platform.api.hap;
         switch (value) {
             case Characteristic.RemoteKey.ARROW_UP:
-                await this.executeCommand('statelessChannelButton', 'channelUp', []);
+                await this.executeCommand('statelessAudioVolumeButton', 'setButton', ['volumeUp']);
                 break;
             case Characteristic.RemoteKey.ARROW_DOWN:
-                await this.executeCommand('statelessChannelButton', 'channelDown', []);
+                await this.executeCommand('statelessAudioVolumeButton', 'setButton', ['volumeDown']);
                 break;
             case Characteristic.RemoteKey.ARROW_LEFT:
-                await this.executeCommand('statelessAudioVolumeButton', 'volumeDown', []);
+                await this.executeCommand('statelessChannelButton', 'setButton', ['channelDown']);
                 break;
             case Characteristic.RemoteKey.ARROW_RIGHT:
-                await this.executeCommand('statelessAudioVolumeButton', 'volumeUp', []);
+                await this.executeCommand('statelessChannelButton', 'setButton', ['channelUp']);
                 break;
             case Characteristic.RemoteKey.BACK:
-                await this.executeCommand('statelessCustomButton', 'setCustomButton', ['back']);
+                await this.executeCommand('statelessCustomButton', 'setButton', ['back']);
                 break;
             case Characteristic.RemoteKey.INFORMATION:
-                await this.executeCommand('statelessCustomButton', 'setCustomButton', ['menu']);
+                await this.executeCommand('statelessCustomButton', 'setButton', ['menu']);
                 break;
             default:
                 this.log.debug(`[Set-Top] 지원하지 않는 리모컨 키: ${value}`);
@@ -105,11 +105,11 @@ class SetTopAccessory {
     async setVolumeSelector(value) {
         // 0: 볼륨 업, 1: 볼륨 다운
         const cmd = value === 0 ? 'volumeUp' : 'volumeDown';
-        await this.executeCommand('statelessAudioVolumeButton', cmd, []);
+        await this.executeCommand('statelessAudioVolumeButton', 'setButton', [cmd]);
     }
 
     async setMute(value) {
-        await this.executeCommand('statelessAudioMuteButton', value ? 'mute' : 'unmute', []);
+        await this.executeCommand('statelessAudioMuteButton', 'setButton', ['muteToggle']);
     }
 }
 

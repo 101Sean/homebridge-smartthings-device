@@ -41,6 +41,10 @@ class TVAccessory {
         this.speakerService.getCharacteristic(Characteristic.VolumeSelector)
             .onSet(this.setVolumeSelector.bind(this));
 
+        this.speakerService.getCharacteristic(Characteristic.Mute)
+            .onGet(() => false)
+            .onSet(this.setMute.bind(this));
+
         this.tvService.addLinkedService(this.speakerService);
 
         // 외부 발행 (PLUGIN_NAME과 배열 형태 확인)
@@ -60,29 +64,29 @@ class TVAccessory {
     }
 
     async setActive(value) {
-        await this.executeCommand('statelessPowerToggleButton', 'push', []);
+        await this.executeCommand('statelessPowerToggleButton', 'setButton', ['powerToggle']);
     }
 
     async setRemoteKey(value) {
         const { Characteristic } = this.platform.api.hap;
         switch (value) {
             case Characteristic.RemoteKey.ARROW_UP:
-                await this.executeCommand('statelessAudioVolumeButton', 'volumeUp', []);
+                await this.executeCommand('statelessAudioVolumeButton', 'setButton', ['volumeUp']);
                 break;
             case Characteristic.RemoteKey.ARROW_DOWN:
-                await this.executeCommand('statelessAudioVolumeButton', 'volumeDown', []);
+                await this.executeCommand('statelessAudioVolumeButton', 'setButton', ['volumeDown']);
                 break;
             case Characteristic.RemoteKey.ARROW_LEFT:
-                await this.executeCommand('statelessChannelButton', 'channelDown', []);
+                await this.executeCommand('statelessChannelButton', 'setButton', ['channelDown']);
                 break;
             case Characteristic.RemoteKey.ARROW_RIGHT:
-                await this.executeCommand('statelessChannelButton', 'channelUp', []);
+                await this.executeCommand('statelessChannelButton', 'setButton', ['channelUp']);
                 break;
             case Characteristic.RemoteKey.BACK:
-                await this.executeCommand('statelessCustomButton', 'setCustomButton', ['back']);
+                await this.executeCommand('statelessCustomButton', 'setButton', ['back']);
                 break;
             case Characteristic.RemoteKey.INFORMATION:
-                await this.executeCommand('statelessCustomButton', 'setCustomButton', ['menu']);
+                await this.executeCommand('statelessCustomButton', 'setButton', ['menu']);
                 break;
             default:
                 this.log.debug(`[TV] 지원하지 않는 리모컨 키: ${value}`);
@@ -92,7 +96,11 @@ class TVAccessory {
 
     async setVolumeSelector(value) {
         const cmd = value === 0 ? 'volumeUp' : 'volumeDown';
-        await this.executeCommand('statelessAudioVolumeButton', cmd, []);
+        await this.executeCommand('statelessAudioVolumeButton', 'setButton', [cmd]);
+    }
+
+    async setMute(value) {
+        await this.executeCommand('statelessAudioMuteButton', 'setButton', ['muteToggle']);
     }
 }
 
