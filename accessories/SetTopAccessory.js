@@ -9,7 +9,7 @@ class SetTopAccessory extends BaseAccessory {
         const { Service, Characteristic, Categories } = hap;
 
         const uuid = hap.uuid.generate(this.deviceId);
-        this.accessory = new hap.platformAccessory(this.name, uuid);
+        this.accessory = new this.platform.api.platformAccessory(this.name, uuid);
         this.accessory.category = Categories.TV_SET_TOP_BOX;
 
         this.accessory.getService(Service.AccessoryInformation)

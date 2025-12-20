@@ -10,7 +10,7 @@ class TVAccessory extends BaseAccessory {
         this.isOn = false;
 
         const uuid = hap.uuid.generate(this.deviceId);
-        this.accessory = new hap.platformAccessory(this.name, uuid);
+        this.accessory = new this.platform.api.platformAccessory(this.name, uuid);
         this.accessory.category = Categories.TELEVISION;
 
         this.accessory.getService(Service.AccessoryInformation)
