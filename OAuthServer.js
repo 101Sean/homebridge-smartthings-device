@@ -10,7 +10,6 @@ class OAuthServer {
         this.api = platform.api;
         this.httpServer = null;
 
-        // 공통 Redirect URI 정의 (불일치 방지)
         this.redirectUri = `https://${this.config.callbackIp}/oauth/callback`;
     }
 
@@ -73,7 +72,6 @@ class OAuthServer {
         try {
             const tokenData = await this.exchangeCodeForToken(code);
 
-            // 토큰 저장 (플랫폼 인스턴스에 전달)
             this.platform.accessToken = tokenData.access_token;
             this.platform.refreshToken = tokenData.refresh_token;
             this.platform.persistTokens();
@@ -85,7 +83,6 @@ class OAuthServer {
                 this.log.info('OAuth 서버가 성공적으로 종료되었습니다.');
             });
 
-            // 디바이스 검색 시작
             this.platform.discoverDevices();
 
         } catch (error) {
