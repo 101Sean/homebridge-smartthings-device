@@ -73,9 +73,11 @@ class SetTopAccessory {
     }
 
     async setActive(value) {
-        this.isOn = (value === this.platform.api.hap.Characteristic.Active.ACTIVE);
+        const { Characteristic } = this.platform.api.hap;
+        this.isOn = (value === Characteristic.Active.ACTIVE);
+
         await this.executeCommand('statelessPowerToggleButton', 'setButton', ['powerToggle']);
-        this.tvService.updateCharacteristic(this.platform.api.hap.Characteristic.Active, value);
+        this.tvService.updateCharacteristic(Characteristic.Active, value);
     }
 
     async setRemoteKey(value) {
