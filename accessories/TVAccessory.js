@@ -7,9 +7,9 @@ class TVAccessory {
         this.device = device;
         this.deviceId = device.deviceId;
         this.name = device.label || 'Smart TV';
-        this.isOn = false;
 
         const { Service, Characteristic, Categories } = this.platform.api.hap;
+        this.isOn = false;
 
         // 외부 액세서리 객체 생성
         const uuid = this.platform.api.hap.uuid.generate(this.deviceId);
