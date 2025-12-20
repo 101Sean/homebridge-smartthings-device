@@ -39,17 +39,29 @@ class PlugAccessory {
     }
 
     async getOnState() {
-        return true;
+        try {
+            const response = await axios.get(`https://api.smartthings.com/v1/devices/${this.deviceId}/status`, {
+                headers: { 'Authorization': `Bearer ${this.platform.accessToken}` }
+            });
+            const state = response.data.components.main.switch.switch.value; // 'on' 또는 'off'
+            this.log.debug(`[Plug] 현재 상태 조회: ${state}`);
+            return state === 'on';
+        } catch (error) {
+            this.log.error(`[Plug] 상태 조회 실패: ${error.message}`);
+            return false;
+        }
     }
 
     async setOnState(value) {
         const command = value ? 'on' : 'off';
         await this.executeCommand('switch', command);
         this.log.info(`[Plug] ${this.name} 전원: ${command}`);
+
+        this.service.updateCharacteristic(this.platform.api.hap.Characteristic.On, value);
     }
 
     async getInUse() {
-        return true;
+        return await this.getOnState();
     }
 }
 

@@ -4,10 +4,11 @@ class AirConAccessory {
     constructor(platform, accessory, device) {
         this.platform = platform;
         this.log = platform.log;
-        this.accessory = accessory; // index.js에서 생성/캐시된 객체를 받음
+        this.accessory = accessory;
         this.device = device;
         this.deviceId = device.deviceId;
         this.name = device.label || 'Air Conditioner';
+        this.state = { active: Characteristic.Active.INACTIVE, temp: 24, mode: Characteristic.TargetHeaterCoolerState.COOL };
 
         const { Service, Characteristic } = this.platform.api.hap;
 
@@ -42,7 +43,7 @@ class AirConAccessory {
 
         // 팬 속도
         this.service.getCharacteristic(Characteristic.RotationSpeed)
-            .setProps({ minStep: 33, minValue: 0, maxValue: 100 })
+            .setProps({ minStep: 40, minValue: 10, maxValue: 90 }) // 3단계
             .onGet(this.getRotationSpeed.bind(this))
             .onSet(this.setRotationSpeed.bind(this));
     }
@@ -81,15 +82,14 @@ class AirConAccessory {
 
     async setTargetState(value) {
         const { TargetHeaterCoolerState } = this.platform.api.hap.Characteristic;
-        let mode = 'cool';
-        if (value === TargetHeaterCoolerState.HEAT) mode = 'heat';
-        else if (value === TargetHeaterCoolerState.AUTO) mode = 'auto';
 
+        this.state.mode = value;
+        let mode = (value === TargetHeaterCoolerState.HEAT) ? 'dry' : (value === TargetHeaterCoolerState.AUTO ? 'auto' : 'cool');
         await this.executeCommand('airConditionerMode', 'setAirConditionerMode', [mode]);
     }
 
     async getCurrentTemperature() {
-        return 24; // 센서가 있다면 실제값 매핑 권장
+        return 24;
     }
 
     async getCoolingThreshold() {
@@ -101,13 +101,13 @@ class AirConAccessory {
     }
 
     async getRotationSpeed() {
-        return 33; // Low: 33, Mid: 66, High: 100
+        return 10; // low: 10, medium: 50, high: 90
     }
 
     async setRotationSpeed(value) {
         let fanMode = 'low';
-        if (value > 70) fanMode = 'high';
-        else if (value > 30) fanMode = 'medium';
+        if (value > 80) fanMode = 'high';
+        else if (value > 40) fanMode = 'medium';
 
         await this.executeCommand('airConditionerFanMode', 'setFanMode', [fanMode]);
     }

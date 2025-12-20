@@ -7,6 +7,7 @@ class SetTopAccessory {
         this.device = device;
         this.deviceId = device.deviceId;
         this.name = device.label || 'Set-Top Box';
+        this.isOn = false;
 
         const { Service, Characteristic, Categories } = this.platform.api.hap;
 
@@ -72,7 +73,9 @@ class SetTopAccessory {
     }
 
     async setActive(value) {
+        this.isOn = (value === this.platform.api.hap.Characteristic.Active.ACTIVE);
         await this.executeCommand('statelessPowerToggleButton', 'setButton', ['powerToggle']);
+        this.tvService.updateCharacteristic(this.platform.api.hap.Characteristic.Active, value);
     }
 
     async setRemoteKey(value) {
