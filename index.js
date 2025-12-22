@@ -1,5 +1,7 @@
 const OAuthServer = require('./OAuthServer');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const TVAccessory = require('./accessories/TVAccessory');
 const SetTopAccessory = require('./accessories/SetTopAccessory');
@@ -40,14 +42,59 @@ class SmartThingsPlatform {
     }
 
     persistTokens() {
-        this.log.info('====================================================');
-        this.log.info('토큰 발급 성공! 아래 내용을 복사하여 config.json에 넣으세요:');
-        this.log.info(`"accessToken": "${this.accessToken}"`);
-        this.log.info(`"refreshToken": "${this.refreshToken}"`);
-        this.log.info('저장 후 재시작하면 더 이상 인증 페이지가 뜨지 않습니다.');
-        this.log.info('====================================================');
+        this.log.info('새로운 토큰을 시스템에 반영합니다.');
+
+        const configPath = this.api.user.configPath();
+
+        try {
+            if (!fs.existsSync(configPath)) {
+                throw new Error(`설정 파일을 찾을 수 없습니다: ${configPath}`);
+            }
+
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const platformConfig = config.platforms.find(p => p.platform === PLATFORM_NAME);
+
+            if (platformConfig) {
+                platformConfig.accessToken = this.accessToken;
+                platformConfig.refreshToken = this.refreshToken;
+
+                fs.writeFileSync(configPath, JSON.stringify(config, null, 4), 'utf8');
+                this.log.info(`[성공] ${configPath} 에 토큰이 자동 저장되었습니다.`);
+            }
+        } catch (err) {
+            this.log.error('자동 저장 실패:', err.message);
+            this.log.warn('우분투 권한 설정을 확인하세요: sudo chown homebridge:homebridge /var/lib/homebridge/config.json');
+        }
 
         this.discoverDevices();
+    }
+
+    async refreshAccessToken() {
+        const tokenUrl = 'https://api.smartthings.com/oauth/token';
+        const authHeader = Buffer.from(`${this.config.clientId}:${this.config.clientSecret}`).toString('base64');
+
+        const params = new URLSearchParams();
+        params.append('grant_type', 'refresh_token');
+        params.append('refresh_token', this.refreshToken);
+
+        try {
+            this.log.info('토큰이 만료되어 갱신을 시도합니다...');
+            const response = await axios.post(tokenUrl, params.toString(), {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Authorization': `Basic ${authHeader}`
+                }
+            });
+
+            this.accessToken = response.data.access_token;
+            this.refreshToken = response.data.refresh_token;
+            this.persistTokens();
+
+            return this.accessToken;
+        } catch (error) {
+            this.log.error('토큰 갱신 실패. 다시 로그인해야 할 수도 있습니다:', error.message);
+            throw error;
+        }
     }
 
     async discoverDevices() {
@@ -102,7 +149,16 @@ class SmartThingsPlatform {
                 }
             }
         } catch (error) {
-            this.log.error('기기 목록 로드 실패:', error.message);
+            if (error.response && error.response.status === 401 && this.refreshToken) {
+                try {
+                    await this.refreshAccessToken();
+                    return await this.discoverDevices();
+                } catch (retryError) {
+                    this.log.error('갱신 후 재시도 실패');
+                }
+            } else {
+                this.log.error('기기 목록 로드 실패:', error.message);
+            }
         }
     }
 }
