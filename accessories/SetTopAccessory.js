@@ -20,9 +20,17 @@ class SetTopAccessory extends BaseAccessory {
         this.tvService.getCharacteristic(Characteristic.Active)
             .onGet(() => this.isOn ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE)
             .onSet(async (value) => {
-                this.isOn = (value === Characteristic.Active.ACTIVE);
                 await this.executeCommand('statelessPowerToggleButton', 'setButton', ['powerToggle']);
-                this.tvService.updateCharacteristic(Characteristic.Active, value);
+
+                if (value === Characteristic.Active.ACTIVE) {
+                    this.isOn = true;
+                    setTimeout(() => {
+                        this.isOn = false;
+                        this.tvService.updateCharacteristic(Characteristic.Active, Characteristic.Active.INACTIVE);
+                    }, 5000);
+                } else {
+                    this.isOn = false;
+                }
             });
 
         this.tvService.getCharacteristic(Characteristic.RemoteKey)

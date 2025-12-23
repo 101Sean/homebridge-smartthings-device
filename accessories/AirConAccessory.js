@@ -12,7 +12,7 @@ class AirConAccessory extends BaseAccessory {
             active: Characteristic.Active.INACTIVE,
             temp: 24,
             mode: Characteristic.TargetHeaterCoolerState.COOL,
-            fanSpeed: 10
+            fanSpeed: 15
         };
 
         this.accessory.getService(Service.AccessoryInformation)
@@ -22,6 +22,9 @@ class AirConAccessory extends BaseAccessory {
 
         this.service = this.accessory.getService(Service.HeaterCooler) ||
             this.accessory.addService(Service.HeaterCooler, this.name);
+
+        this.service.getCharacteristic(Characteristic.TemperatureDisplayUnits)
+            .onGet(() => Characteristic.TemperatureDisplayUnits.CELSIUS);
 
         this.service.getCharacteristic(Characteristic.Active)
             .onGet(() => this.state.active)
@@ -33,17 +36,31 @@ class AirConAccessory extends BaseAccessory {
 
         this.service.getCharacteristic(Characteristic.CurrentHeaterCoolerState)
             .onGet(() => {
-                return (this.state.active === Characteristic.Active.ACTIVE) ?
-                    Characteristic.CurrentHeaterCoolerState.COOLING : Characteristic.CurrentHeaterCoolerState.INACTIVE;
+                if (this.state.active === Characteristic.Active.INACTIVE) {
+                    return Characteristic.CurrentHeaterCoolerState.INACTIVE;
+                }
+                if (this.state.mode === Characteristic.TargetHeaterCoolerState.HEAT) return Characteristic.CurrentHeaterCoolerState.HEATING;
+                return Characteristic.CurrentHeaterCoolerState.COOLING;
             });
 
         this.service.getCharacteristic(Characteristic.TargetHeaterCoolerState)
+            .setProps({
+                validValues: [
+                    Characteristic.TargetHeaterCoolerState.AUTO,
+                    Characteristic.TargetHeaterCoolerState.HEAT,
+                    Characteristic.TargetHeaterCoolerState.COOL
+                ]
+            })
             .onGet(() => this.state.mode)
             .onSet(async (value) => {
                 this.state.mode = value;
                 let mode = 'cool';
-                if (value === Characteristic.TargetHeaterCoolerState.HEAT) mode = 'dry'; // 난방 > 제습운전
-                else if (value === Characteristic.TargetHeaterCoolerState.AUTO) mode = 'auto';
+
+                if (value === Characteristic.TargetHeaterCoolerState.HEAT) {
+                    mode = 'dry';
+                } else if (value === Characteristic.TargetHeaterCoolerState.AUTO) {
+                    mode = 'auto';
+                }
 
                 await this.executeCommand('airConditionerMode', 'setAirConditionerMode', [mode]);
             });
@@ -51,8 +68,18 @@ class AirConAccessory extends BaseAccessory {
         this.service.getCharacteristic(Characteristic.CurrentTemperature)
             .onGet(() => this.state.temp);
 
+        const tempProps = { minStep: 1, minValue: 18, maxValue: 30 };
+
         this.service.getCharacteristic(Characteristic.CoolingThresholdTemperature)
-            .setProps({ minStep: 1, minValue: 18, maxValue: 30 })
+            .setProps(tempProps)
+            .onGet(() => this.state.temp)
+            .onSet(async (value) => {
+                this.state.temp = value;
+                await this.executeCommand('thermostatCoolingSetpoint', 'setCoolingSetpoint', [value]);
+            });
+
+        this.service.getCharacteristic(Characteristic.HeatingThresholdTemperature)
+            .setProps(tempProps)
             .onGet(() => this.state.temp)
             .onSet(async (value) => {
                 this.state.temp = value;
@@ -60,12 +87,12 @@ class AirConAccessory extends BaseAccessory {
             });
 
         this.service.getCharacteristic(Characteristic.RotationSpeed)
-            .setProps({ minStep: 40, minValue: 10, maxValue: 90 }) // 10(약), 50(중), 90(강)
+            .setProps({ minStep: 35, minValue: 15, maxValue: 85 })
             .onGet(() => this.state.fanSpeed)
             .onSet(async (value) => {
                 this.state.fanSpeed = value;
                 let fanMode = 'low';
-                if (value > 80) fanMode = 'high';
+                if (value > 75) fanMode = 'high';
                 else if (value > 40) fanMode = 'medium';
 
                 await this.executeCommand('airConditionerFanMode', 'setFanMode', [fanMode]);
