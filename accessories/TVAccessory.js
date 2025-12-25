@@ -7,8 +7,6 @@ class TVAccessory extends BaseAccessory {
         const hap = this.platform.api.hap;
         const { Service, Characteristic, Categories } = hap;
 
-        this.isOn = false;
-
         const uuid = hap.uuid.generate(this.deviceId);
         this.accessory = new this.platform.api.platformAccessory(this.name, uuid);
         this.accessory.category = Categories.TELEVISION;
@@ -24,18 +22,14 @@ class TVAccessory extends BaseAccessory {
         this.tvService.setCharacteristic(Characteristic.SleepDiscoveryMode, Characteristic.SleepDiscoveryMode.ALWAYS_DISCOVERABLE);
 
         this.tvService.getCharacteristic(Characteristic.Active)
-            .onGet(() => this.isOn ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE)
+            .onGet(() => Characteristic.Active.ACTIVE)
             .onSet(async (value) => {
                 await this.executeCommand('statelessPowerToggleButton', 'setButton', ['powerToggle']);
 
-                if (value === Characteristic.Active.ACTIVE) {
-                    this.isOn = true;
+                if (value === Characteristic.Active.INACTIVE) {
                     setTimeout(() => {
-                        this.isOn = false;
-                        this.tvService.updateCharacteristic(Characteristic.Active, Characteristic.Active.INACTIVE);
-                    }, 5000); // 5초뒤 꺼짐
-                } else {
-                    this.isOn = false;
+                        this.tvService.updateCharacteristic(Characteristic.Active, Characteristic.Active.ACTIVE);
+                    }, 1000);
                 }
             });
 

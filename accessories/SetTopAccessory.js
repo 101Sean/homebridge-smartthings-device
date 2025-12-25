@@ -3,7 +3,6 @@ const BaseAccessory = require('./BaseAccessory');
 class SetTopAccessory extends BaseAccessory {
     constructor(platform, device) {
         super(platform, device);
-        this.isOn = false;
 
         const hap = this.platform.api.hap;
         const { Service, Characteristic, Categories } = hap;
@@ -18,18 +17,14 @@ class SetTopAccessory extends BaseAccessory {
 
         this.tvService = this.accessory.getService(Service.Television) || this.accessory.addService(Service.Television, this.name);
         this.tvService.getCharacteristic(Characteristic.Active)
-            .onGet(() => this.isOn ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE)
+            .onGet(() => Characteristic.Active.ACTIVE)
             .onSet(async (value) => {
                 await this.executeCommand('statelessPowerToggleButton', 'setButton', ['powerToggle']);
 
-                if (value === Characteristic.Active.ACTIVE) {
-                    this.isOn = true;
+                if (value === Characteristic.Active.INACTIVE) {
                     setTimeout(() => {
-                        this.isOn = false;
-                        this.tvService.updateCharacteristic(Characteristic.Active, Characteristic.Active.INACTIVE);
-                    }, 5000);
-                } else {
-                    this.isOn = false;
+                        this.tvService.updateCharacteristic(Characteristic.Active, Characteristic.Active.ACTIVE);
+                    }, 1000);
                 }
             });
 
