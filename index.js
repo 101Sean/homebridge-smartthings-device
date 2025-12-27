@@ -1,7 +1,6 @@
 const OAuthServer = require('./OAuthServer');
 const axios = require('axios');
 const fs = require('fs');
-const path = require('path');
 
 const TVAccessory = require('./accessories/TVAccessory');
 const SetTopAccessory = require('./accessories/SetTopAccessory');
@@ -107,13 +106,13 @@ class SmartThingsPlatform {
 
             for (const device of devices) {
                 const caps = device.components?.[0]?.capabilities?.map(c => c.id) || [];
+                const cats = device.components?.[0]?.categories?.map(c => c.name) || [];
+
                 let AccessoryClass = null;
 
-                // 기기 유형 판별
-                if (caps.includes('statelessPowerToggleButton') &&
-                    device.components[0].categories.some(cat => cat.name === 'Television')) {
+                if (caps.includes('statelessPowerToggleButton') && cats.includes('Television')) {
                     AccessoryClass = TVAccessory;
-                } else if (device.components[0].categories.some(cat => cat.name === 'SetTop')) {
+                } else if (cats.includes('SetTop')) {
                     AccessoryClass = SetTopAccessory;
                 } else if (caps.includes('airConditionerMode') || caps.includes('thermostatCoolingSetpoint')) {
                     AccessoryClass = AirConAccessory;
