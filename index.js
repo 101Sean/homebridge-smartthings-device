@@ -91,7 +91,20 @@ class SmartThingsPlatform {
 
             return this.accessToken;
         } catch (error) {
-            this.log.error('토큰 갱신 실패. 다시 로그인해야 할 수도 있습니다:', error.message);
+            const status = error.response ? error.response.status : 'N/A';
+            if (status === 400 || status === 401) {
+                this.log.error(`[치명적 오류] 토큰 갱신 실패 (상태코드: ${status}).`);
+                this.log.warn('인증 정보를 초기화하고 하위 브릿지를 자동으로 재시작합니다...');
+                this.accessToken = null;
+                this.refreshToken = null;
+                this.persistTokens();
+
+                setTimeout(() => {
+                    process.exit(1);
+                }, 5000);
+            } else {
+                this.log.error('토큰 갱신 중 네트워크 또는 기타 오류 발생:', error.message);
+            }
             throw error;
         }
     }
