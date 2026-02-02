@@ -1,6 +1,7 @@
 const OAuthServer = require('./OAuthServer');
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 
 const TVAccessory = require('./accessories/TVAccessory');
 const SetTopAccessory = require('./accessories/SetTopAccessory');
@@ -40,8 +41,9 @@ class SmartThingsPlatform {
         this.accessories.push(accessory);
     }
 
-    persistTokens(shouldDiscover = true) {
+    persistTokens() {
         this.log.info('새로운 토큰을 시스템에 반영합니다.');
+
         const configPath = this.api.user.configPath();
 
         try {
@@ -64,9 +66,7 @@ class SmartThingsPlatform {
             this.log.warn('우분투 권한 설정을 확인하세요: sudo chown homebridge:homebridge /var/lib/homebridge/config.json');
         }
 
-        if (shouldDiscover) {
-            this.discoverDevices();
-        }
+        this.discoverDevices();
     }
 
     async refreshAccessToken() {
@@ -88,25 +88,16 @@ class SmartThingsPlatform {
 
             this.accessToken = response.data.access_token;
             this.refreshToken = response.data.refresh_token;
-            this.persistTokens(true);
+            this.persistTokens();
+
+            this.log.warn('새 토큰이 저장되었습니다. 브릿지를 재시작하여 변경사항을 적용합니다.');
+            setTimeout(() => {
+                process.exit(1);
+            }, 2000);
 
             return this.accessToken;
         } catch (error) {
-            const status = error.response ? error.response.status : 'N/A';
-            this.log.error(`토큰 갱신 실패 [상태코드: ${status}]:`, error.message);
-
-            if (status === 400 || status === 401) {
-                this.log.warn('리프레시 토큰이 만료되었습니다. 인증 정보를 초기화하고 브릿지를 재시작합니다.');
-
-                this.accessToken = null;
-                this.refreshToken = null;
-                this.persistTokens(false);
-
-                setTimeout(() => {
-                    this.log.warn('Child 브릿지를 종료합니다 (Auto-Restart)');
-                    process.exit(1);
-                }, 3000);
-            }
+            this.log.error('토큰 갱신 실패. 다시 로그인해야 할 수도 있습니다:', error.message);
             throw error;
         }
     }
@@ -121,13 +112,13 @@ class SmartThingsPlatform {
 
             for (const device of devices) {
                 const caps = device.components?.[0]?.capabilities?.map(c => c.id) || [];
-                const cats = device.components?.[0]?.categories?.map(c => c.name) || [];
-
                 let AccessoryClass = null;
 
-                if (caps.includes('statelessPowerToggleButton') && cats.includes('Television')) {
+                // 기기 유형 판별
+                if (caps.includes('statelessPowerToggleButton') &&
+                    device.components[0].categories.some(cat => cat.name === 'Television')) {
                     AccessoryClass = TVAccessory;
-                } else if (cats.includes('SetTop')) {
+                } else if (device.components[0].categories.some(cat => cat.name === 'SetTop')) {
                     AccessoryClass = SetTopAccessory;
                 } else if (caps.includes('airConditionerMode') || caps.includes('thermostatCoolingSetpoint')) {
                     AccessoryClass = AirConAccessory;
