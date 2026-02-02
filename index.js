@@ -40,9 +40,8 @@ class SmartThingsPlatform {
         this.accessories.push(accessory);
     }
 
-    persistTokens() {
+    persistTokens(shouldDiscover = true) {
         this.log.info('새로운 토큰을 시스템에 반영합니다.');
-
         const configPath = this.api.user.configPath();
 
         try {
@@ -65,7 +64,9 @@ class SmartThingsPlatform {
             this.log.warn('우분투 권한 설정을 확인하세요: sudo chown homebridge:homebridge /var/lib/homebridge/config.json');
         }
 
-        this.discoverDevices();
+        if (shouldDiscover) {
+            this.discoverDevices();
+        }
     }
 
     async refreshAccessToken() {
@@ -87,23 +88,24 @@ class SmartThingsPlatform {
 
             this.accessToken = response.data.access_token;
             this.refreshToken = response.data.refresh_token;
-            this.persistTokens();
+            this.persistTokens(true);
 
             return this.accessToken;
         } catch (error) {
             const status = error.response ? error.response.status : 'N/A';
+            this.log.error(`토큰 갱신 실패 [상태코드: ${status}]:`, error.message);
+
             if (status === 400 || status === 401) {
-                this.log.error(`[치명적 오류] 토큰 갱신 실패 (상태코드: ${status}).`);
-                this.log.warn('인증 정보를 초기화하고 하위 브릿지를 자동으로 재시작합니다...');
+                this.log.warn('리프레시 토큰이 만료되었습니다. 인증 정보를 초기화하고 브릿지를 재시작합니다.');
+
                 this.accessToken = null;
                 this.refreshToken = null;
-                this.persistTokens();
+                this.persistTokens(false);
 
                 setTimeout(() => {
+                    this.log.warn('Child 브릿지를 종료합니다 (Auto-Restart)');
                     process.exit(1);
-                }, 5000);
-            } else {
-                this.log.error('토큰 갱신 중 네트워크 또는 기타 오류 발생:', error.message);
+                }, 3000);
             }
             throw error;
         }
