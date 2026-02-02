@@ -98,8 +98,10 @@ class SmartThingsPlatform {
                 fs.writeFileSync(configPath, JSON.stringify(config, null, 4), 'utf8');
             }
 
-            this.log.info('새 토큰 저장 완료. 브릿지를 재시작합니다.');
-            process.exit(1);
+            this.log.info('새 토큰 저장 완료. 3초 후 브릿지를 재시작합니다.');
+            setTimeout(() => {
+                process.exit(1);
+            }, 3000);
 
             return this.accessToken;
         } catch (error) {
