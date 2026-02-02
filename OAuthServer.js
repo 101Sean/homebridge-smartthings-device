@@ -83,7 +83,10 @@ class OAuthServer {
                 this.log.info('OAuth 서버가 성공적으로 종료되었습니다.');
             });
 
-            this.platform.discoverDevices();
+            this.log.info('인증 정보를 반영하기 위해 3초 후 브릿지를 재시작합니다...');
+            setTimeout(() => {
+                process.exit(1);
+            }, 3000);
 
         } catch (error) {
             this.log.error('인증 과정 중 치명적 오류:', error.message);
