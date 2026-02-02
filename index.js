@@ -88,12 +88,18 @@ class SmartThingsPlatform {
 
             this.accessToken = response.data.access_token;
             this.refreshToken = response.data.refresh_token;
-            this.persistTokens();
 
-            this.log.warn('새 토큰이 저장되었습니다. 브릿지를 재시작하여 변경사항을 적용합니다.');
-            setTimeout(() => {
-                process.exit(1);
-            }, 2000);
+            const configPath = this.api.user.configPath();
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const platformConfig = config.platforms.find(p => p.platform === PLATFORM_NAME);
+            if (platformConfig) {
+                platformConfig.accessToken = this.accessToken;
+                platformConfig.refreshToken = this.refreshToken;
+                fs.writeFileSync(configPath, JSON.stringify(config, null, 4), 'utf8');
+            }
+
+            this.log.info('새 토큰 저장 완료. 브릿지를 재시작합니다.');
+            process.exit(1);
 
             return this.accessToken;
         } catch (error) {
