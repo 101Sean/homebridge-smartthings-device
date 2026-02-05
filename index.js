@@ -18,8 +18,23 @@ class SmartThingsPlatform {
         this.api = api;
         this.accessories = [];
 
-        this.accessToken = config.accessToken || null;
-        this.refreshToken = config.refreshToken || null;
+        const configPath = this.api.user.configPath();
+        try {
+            const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const platformConfig = fileConfig.platforms.find(p => p.platform === PLATFORM_NAME);
+            if (platformConfig) {
+                this.config = platformConfig;
+                this.accessToken = platformConfig.accessToken || null;
+                this.refreshToken = platformConfig.refreshToken || null;
+            } else {
+                this.config = config;
+            }
+        } catch (err) {
+            this.log.error('설정 파일 직접 읽기 실패, 기본값 사용:', err.message);
+            this.config = config;
+            this.accessToken = config.accessToken || null;
+            this.refreshToken = config.refreshToken || null;
+        }
 
         this.api.on('didFinishLaunching', () => {
             this.initAuthentication();
